@@ -1,7 +1,7 @@
 // entrypoints/content.ts
 // 内容脚本：作为 injected script 和 background 之间的桥梁
 
-import type { Message, MessageResponse } from '@/types';
+import type { Message, MessageResponse, MetaSoApiResponse } from '@/types';
 
 export default defineContentScript({
   matches: ['*://metaso.cn/*'],
@@ -156,7 +156,7 @@ export default defineContentScript({
       url: string;
       fileId: string;
       pageId: string;
-      content: any;
+      content: MetaSoApiResponse;
       estimatedTokens?: number;
     }) {
       // 如果已存在弹窗，先移除
@@ -166,25 +166,19 @@ export default defineContentScript({
       // 实际 API 响应格式: { errCode: 0, data: { markdown: [{ markdown: ["line1", "line2"], page: 0 }] } }
       let previewContent = '';
       try {
-        if (data.content && typeof data.content === 'object') {
-          const responseData = (data.content as any).data;
+        const responseData = data.content.data;
 
-          if (responseData && Array.isArray(responseData.markdown)) {
-            // markdown 是一个数组，每个元素包含 markdown 数组
-            const allMarkdown: string[] = [];
-            responseData.markdown.forEach((item: any) => {
-              if (item.markdown && Array.isArray(item.markdown)) {
-                allMarkdown.push(...item.markdown);
-              }
-            });
-            previewContent = allMarkdown.join('\n');
-          } else if (typeof responseData.markdown === 'string') {
-            previewContent = responseData.markdown;
-          } else if (typeof data.content === 'string') {
-            previewContent = data.content;
-          }
-        } else if (typeof data.content === 'string') {
-          previewContent = data.content;
+        if (responseData && Array.isArray(responseData.markdown)) {
+          // markdown 是一个数组，每个元素包含 markdown 数组
+          const allMarkdown: string[] = [];
+          responseData.markdown.forEach((item) => {
+            if (item.markdown && Array.isArray(item.markdown)) {
+              allMarkdown.push(...item.markdown);
+            }
+          });
+          previewContent = allMarkdown.join('\n');
+        } else if (responseData && typeof responseData.markdown === 'string') {
+          previewContent = responseData.markdown;
         }
 
         // 确保 previewContent 是字符串

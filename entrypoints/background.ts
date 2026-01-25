@@ -4,7 +4,15 @@
 import { indexedDB } from '@/utils/indexedDB';
 import { generateObjectHash } from '@/utils/hash';
 import { translationService } from '@/services/translation';
-import type { Message, MessageResponse, ContentEntry, TranslationEntry, ConfigEntry } from '@/types';
+import type {
+  Message,
+  MessageResponse,
+  ContentEntry,
+  TranslationEntry,
+  ConfigEntry,
+  MetaSoApiResponse,
+  MetaSoMarkdownItem
+} from '@/types';
 
 export default defineBackground(() => {
   console.log('[MetaSo Translator] Background script 已启动');
@@ -79,7 +87,7 @@ export default defineBackground(() => {
     url: string;
     fileId: string;
     pageId: string;
-    content: any;
+    content: MetaSoApiResponse;
   }): Promise<MessageResponse> {
     console.log('[Background] 处理原始请求:', payload.id);
 
@@ -105,27 +113,21 @@ export default defineBackground(() => {
     }
 
     // 3. 估算 Token 数量
-    // 安全地提取 markdown 内容
-    // 实际 API 响应格式: { errCode: 0, data: { markdown: [{ markdown: ["line1", "line2"], page: 0 }] } }
+    // 提取 markdown 内容用于估算
     let markdown = '';
     try {
-      if (payload.content && typeof payload.content === 'object') {
-        // 实际格式：{ errCode: 0, data: { markdown: [...] } }
-        const data = (payload.content as any).data;
+      const data = payload.content.data;
 
-        if (data && Array.isArray(data.markdown)) {
-          // markdown 是一个数组，每个元素包含 markdown 数组和 page
-          // 将所有 markdown 数组合并成一个字符串
-          const allMarkdown: string[] = [];
-          data.markdown.forEach((item: any) => {
-            if (item.markdown && Array.isArray(item.markdown)) {
-              allMarkdown.push(...item.markdown);
-            }
-          });
-          markdown = allMarkdown.join('\n');
-        } else if (typeof data.markdown === 'string') {
-          markdown = data.markdown;
-        }
+      if (data && Array.isArray(data.markdown)) {
+        // markdown 是一个数组，每个元素包含 markdown 数组和 page
+        // 将所有 markdown 数组合并成一个字符串
+        const allMarkdown: string[] = [];
+        data.markdown.forEach((item) => {
+          if (item.markdown && Array.isArray(item.markdown)) {
+            allMarkdown.push(...item.markdown);
+          }
+        });
+        markdown = allMarkdown.join('\n');
       }
     } catch (error) {
       console.warn('[Background] 无法提取 markdown:', error, '原始数据:', payload.content);
@@ -166,7 +168,7 @@ export default defineBackground(() => {
       url: string;
       fileId: string;
       pageId: string;
-      content: any;
+      content: MetaSoApiResponse;
     },
     sender: any
   ): Promise<MessageResponse> {
@@ -193,99 +195,103 @@ export default defineBackground(() => {
       return { success: true, data: existingTranslation };
     }
 
-    // 3. 开始翻译
+    // 3. 开始翻译 - 按页分批翻译
     try {
-      // 安全地提取 markdown 内容，保留原始结构
-      // 实际 API 响应格式: { errCode: 0, data: { markdown: [{ markdown: ["line1", "line2"], markdown_lang: [...], page: 0 }] } }
-      const data = (payload.content as any).data;
-      let originalMarkdownItems: any[] = [];
-
-      if (data && Array.isArray(data.markdown)) {
-        originalMarkdownItems = data.markdown;
-      }
+      const data = payload.content.data;
+      const originalMarkdownItems: MetaSoMarkdownItem[] = data.markdown || [];
 
       if (originalMarkdownItems.length === 0) {
         throw new Error('无法提取要翻译的内容');
       }
 
-      // 提取所有原始文本进行翻译
-      const allOriginalText: string[] = [];
-      originalMarkdownItems.forEach((item: any) => {
-        if (item.markdown && Array.isArray(item.markdown)) {
-          allOriginalText.push(...item.markdown);
+      console.log('[Background] 开始按段落智能分批翻译');
+      console.log('[Background] 原始内容:', originalMarkdownItems.length, '个 markdown 项');
+      console.log('[Background] 翻译提供商:', config.apiProvider, '模型:', config.model);
+
+      const startTime = Date.now();
+      let totalTokens = 0;
+
+      // 1. 将所有段落展平
+      const paragraphs = flattenMarkdownItems(originalMarkdownItems);
+      const totalParagraphs = paragraphs.length;
+      console.log('[Background] 共', totalParagraphs, '个段落待翻译');
+
+      // 2. 智能分批（根据模型上下文窗口，默认 8192）
+      // 不同模型有不同的上下文窗口，这里使用保守值
+      const maxContextTokens = 8192;
+      const batches = batchParagraphs(paragraphs, maxContextTokens);
+      console.log('[Background] 智能分批为', batches.length, '个批次');
+
+      // 3. 逐批翻译
+      const translatedParagraphs = new Map<string, string>();
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        const batchText = batch.map(p => p.text).join('\n\n');
+
+        const batchStart = batch[0];
+        const batchEnd = batch[batch.length - 1];
+        console.log(`[Background] 翻译批次 ${batchIndex + 1}/${batches.length}`);
+        console.log(`[Background]   包含段落 ${batchStart.itemIndex}-${batchStart.paragraphIndex} 到 ${batchEnd.itemIndex}-${batchEnd.paragraphIndex}`);
+        console.log(`[Background]   批次大小: ${batch.length} 个段落, 约 ${estimateTokens(batchText)} tokens`);
+
+        // 翻译当前批次
+        const translationResult = await translationService.translate(batchText, {
+          apiKey: config.apiKey,
+          apiProvider: config.apiProvider,
+          apiEndpoint: config.apiEndpoint,
+          model: config.model,
+          targetLanguage: config.language,
+          maxTokens: 8192,
+          temperature: 0.3
+        });
+
+        if (!translationResult.success || !translationResult.content) {
+          throw new Error(`批次 ${batchIndex + 1} 翻译失败: ${translationResult.error || '未知错误'}`);
         }
-      });
 
-      const markdownToTranslate = allOriginalText.join('\n');
-      console.log('[Background] 提取的 markdown 长度:', markdownToTranslate.length);
-      console.log('[Background] 开始翻译，提供商:', config.apiProvider, '模型:', config.model);
+        // 将翻译结果按段落分割（使用双换行符分隔）
+        const translatedLines = translationResult.content.split('\n\n').map(s => s.trim()).filter(s => s);
 
-      // 调用翻译服务
-      const translationResult = await translationService.translate(markdownToTranslate, {
-        apiKey: config.apiKey,
-        apiProvider: config.apiProvider,
-        apiEndpoint: config.apiEndpoint,
-        model: config.model,
-        targetLanguage: config.language,
-        maxTokens: 8192,
-        temperature: 0.3
-      });
+        // 存储每个段落的翻译结果
+        batch.forEach((para, index) => {
+          const key = `${para.itemIndex}-${para.paragraphIndex}`;
+          const translatedText = translatedLines[index] || para.text;
+          translatedParagraphs.set(key, translatedText.trimEnd() + '\n\n');
+        });
 
-      if (!translationResult.success || !translationResult.content) {
-        throw new Error(translationResult.error || '翻译失败');
+        totalTokens += translationResult.meta?.tokenCount || 0;
+        console.log(`[Background]   批次 ${batchIndex + 1} 翻译完成`);
       }
 
-      console.log('[Background] 翻译完成');
+      // 4. 重新组装为原始结构
+      const translatedItems = assembleTranslatedContent(originalMarkdownItems, translatedParagraphs);
+
+      const duration = Date.now() - startTime;
+      console.log('[Background] 所有段落翻译完成，总耗时:', duration, 'ms');
+      console.log('[Background] 总 token 数:', totalTokens);
 
       // 构造符合原始 API 格式的翻译响应
-      // 格式: { errCode: 0, data: { markdown: [{ markdown_lang: [...翻译], markdown: [...原文], page: N }] } }
-      const translatedLines = translationResult.content.split('\n');
-
-      // 创建一个映射，将原始文本索引映射到翻译后的文本
-      // 简单策略：按行数比例分配翻译结果
-      const translatedContent = {
+      const translatedContent: MetaSoApiResponse = {
         errCode: 0,
         errMsg: 'success',
         data: {
           lang: config.language,
           total_page: data.total_page,
-          markdown: originalMarkdownItems.map((originalItem: any, itemIndex: number) => {
-            // 计算该项在总文本中的位置
-            let startLineIndex = 0;
-            for (let i = 0; i < itemIndex; i++) {
-              if (originalMarkdownItems[i].markdown && Array.isArray(originalMarkdownItems[i].markdown)) {
-                startLineIndex += originalMarkdownItems[i].markdown.length;
-              }
-            }
-
-            // 获取对应项的翻译内容
-            const itemLineCount = (originalItem.markdown && Array.isArray(originalItem.markdown))
-              ? originalItem.markdown.length
-              : 0;
-
-            const itemTranslatedLines = translatedLines.slice(startLineIndex, startLineIndex + itemLineCount);
-
-            return {
-              markdown_lang: itemTranslatedLines.length > 0 ? itemTranslatedLines : [''],
-              markdown: originalItem.markdown || [],
-              page: originalItem.page || 0,
-              could_translate: true
-            };
-          })
+          markdown: translatedItems
         }
       };
 
-      // 存储翻译结果（简化格式，只存储实际的 markdown 字符串）
+      // 存储翻译结果
       const translationEntry: TranslationEntry = {
         id: payload.id,
         contentId: payload.id,
         translatedContent: translatedContent,
         meta: {
-          translatedAt: translationResult.meta?.translatedAt || Date.now(),
+          translatedAt: Date.now(),
           model: config.model,
           provider: config.apiProvider,
-          tokenCount: translationResult.meta?.tokenCount || 0,
-          duration: translationResult.meta?.duration || 0
+          tokenCount: totalTokens,
+          duration: duration
         },
         status: 'completed'
       };
@@ -432,5 +438,104 @@ export default defineBackground(() => {
 
     // 中文：2 字符/token，其他：4 字符/token
     return Math.ceil(chineseChars / 2) + Math.ceil(otherChars / 4);
+  }
+
+  /**
+   * 段落信息：用于跟踪每个段落的原始位置
+   */
+  interface ParagraphInfo {
+    text: string;
+    itemIndex: number;     // 在 originalMarkdownItems 中的索引
+    paragraphIndex: number; // 在该 item 的 markdown 数组中的索引
+    estimatedTokens: number;
+  }
+
+  /**
+   * 将所有 markdown 项展平为段落列表
+   */
+  function flattenMarkdownItems(items: MetaSoMarkdownItem[]): ParagraphInfo[] {
+    const paragraphs: ParagraphInfo[] = [];
+
+    items.forEach((item, itemIndex) => {
+      if (item.markdown && Array.isArray(item.markdown)) {
+        item.markdown.forEach((paragraph, paragraphIndex) => {
+          paragraphs.push({
+            text: paragraph,
+            itemIndex,
+            paragraphIndex,
+            estimatedTokens: estimateTokens(paragraph)
+          });
+        });
+      }
+    });
+
+    return paragraphs;
+  }
+
+  /**
+   * 智能分批：根据上下文窗口大小将段落分批
+   * @param paragraphs 所有段落
+   * @param maxTokens 每批的最大 token 数量（包含提示词和响应的预留空间）
+   * @returns 分批后的段落数组
+   */
+  function batchParagraphs(paragraphs: ParagraphInfo[], maxTokens: number): ParagraphInfo[][] {
+    const batches: ParagraphInfo[][] = [];
+    let currentBatch: ParagraphInfo[] = [];
+    let currentBatchTokens = 0;
+
+    // 预留空间给系统提示词和响应（约 1000 tokens）
+    const safeMaxTokens = maxTokens - 1000;
+
+    for (const paragraph of paragraphs) {
+      const estimatedTokens = paragraph.estimatedTokens;
+
+      // 如果单个段落就超过安全限制，仍然需要翻译（可能失败，但总比不尝试好）
+      if (estimatedTokens > safeMaxTokens) {
+        // 如果当前批次不为空，先保存
+        if (currentBatch.length > 0) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentBatchTokens = 0;
+        }
+        // 将大段落单独作为一个批次
+        batches.push([paragraph]);
+        continue;
+      }
+
+      // 如果添加这个段落会超过限制，先保存当前批次
+      if (currentBatchTokens + estimatedTokens > safeMaxTokens && currentBatch.length > 0) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentBatchTokens = 0;
+      }
+
+      currentBatch.push(paragraph);
+      currentBatchTokens += estimatedTokens;
+    }
+
+    // 保存最后一个批次
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+
+    return batches;
+  }
+
+  /**
+   * 将翻译结果重新组装为原始的 markdown 结构
+   */
+  function assembleTranslatedContent(
+    originalItems: MetaSoMarkdownItem[],
+    translatedParagraphs: Map<string, string>
+  ): MetaSoMarkdownItem[] {
+    return originalItems.map((item, itemIndex) => ({
+      markdown_lang: item.markdown.map((_, paragraphIndex) => {
+        const key = `${itemIndex}-${paragraphIndex}`;
+        return translatedParagraphs.get(key) || '';
+      }),
+      markdown: item.markdown,
+      page: item.page,
+      could_translate: true
+    }));
   }
 });
