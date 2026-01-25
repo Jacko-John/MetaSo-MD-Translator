@@ -1,6 +1,7 @@
 // Custom Endpoint Provider
 
 import type { TranslationProvider, TranslationConfig } from '@/types';
+import { getDefaultSystemPrompt, buildUserPrompt } from '../translation';
 
 /**
  * 自定义端点提供商（兼容 OpenAI 格式）
@@ -13,7 +14,7 @@ export class CustomProvider implements TranslationProvider {
       throw new Error('Custom endpoint not configured');
     }
 
-    const systemPrompt = config.systemPrompt || this.getDefaultSystemPrompt();
+    const systemPrompt = config.systemPrompt || getDefaultSystemPrompt(config.targetLanguage);
 
     const requestBody = {
       model: config.model,
@@ -24,7 +25,7 @@ export class CustomProvider implements TranslationProvider {
         },
         {
           role: 'user',
-          content: this.buildUserPrompt(content, config.targetLanguage)
+          content: buildUserPrompt(content, config.targetLanguage)
         }
       ],
       temperature: config.temperature || 0.3,
@@ -70,31 +71,5 @@ export class CustomProvider implements TranslationProvider {
     const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
     const otherChars = text.length - chineseChars;
     return Math.ceil(chineseChars / 2) + Math.ceil(otherChars / 4);
-  }
-
-  private buildUserPrompt(content: string, targetLanguage: string): string {
-    return `请将以下 Markdown 内容翻译为${targetLanguage}，保持 Markdown 格式不变：
-
-\`\`\`markdown
-${content}
-\`\`\`
-
-要求：
-1. 保持所有 Markdown 格式（标题、列表、代码块、链接等）
-2. 专业术语保持一致性
-3. 保持原文的语气和风格
-4. 代码块中的代码不要翻译
-5. 只返回翻译后的内容，不要添加任何解释`;
-  }
-
-  private getDefaultSystemPrompt(): string {
-    return `你是一个专业的技术文档翻译专家。请将给定的 Markdown 内容翻译为目标语言。
-
-翻译要求：
-1. 保持 Markdown 格式完整（标题、列表、代码块、链接等）
-2. 专业术语保持一致性
-3. 保持原文的语气和风格
-4. 代码块内容不要翻译
-5. 只返回翻译后的内容，不要添加任何解释或说明`;
   }
 }

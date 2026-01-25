@@ -6,6 +6,48 @@ import { AnthropicProvider } from './providers/anthropic';
 import { CustomProvider } from './providers/custom';
 
 /**
+ * 生成默认的系统提示词
+ */
+export function getDefaultSystemPrompt(targetLanguage?: string): string {
+  const lang = targetLanguage || 'zh-CN';
+  const langMap: Record<string, string> = {
+    'zh-CN': '简体中文',
+    'zh-TW': '繁体中文',
+    'en': '英文',
+    'ja': '日文',
+    'ko': '韩文'
+  };
+  const target = langMap[lang] || lang;
+
+  return `你是一个专业的技术文档翻译专家。请将给定的 Markdown 内容翻译为${target}。
+
+要求：
+1. 保持 Markdown 格式不变
+2. 保留专业术语的准确性
+3. 确保翻译流畅自然
+4. 不要添加或删除任何内容
+5. 只返回翻译后的内容，不要有任何解释或说明`;
+}
+
+/**
+ * 构建用户提示词
+ */
+export function buildUserPrompt(content: string, targetLanguage: string): string {
+  return `请将以下 Markdown 内容翻译为${targetLanguage}，保持 Markdown 格式不变：
+
+\`\`\`markdown
+${content}
+\`\`\`
+
+要求：
+1. 保持所有 Markdown 格式（标题、列表、代码块、链接等）
+2. 专业术语保持一致性
+3. 保持原文的语气和风格
+4. 代码块中的代码不要翻译
+5. 只返回翻译后的内容，不要添加任何解释`;
+}
+
+/**
  * 翻译服务管理器
  */
 export class TranslationService {
