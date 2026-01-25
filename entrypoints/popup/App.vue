@@ -300,7 +300,18 @@ function getProviderInfo(provider: string | undefined) {
               </svg>
               模型
             </label>
-            <select v-model="config.model" class="model-select">
+
+            <!-- 自定义提供商使用文本输入 -->
+            <input
+              v-if="config.apiProvider === 'custom'"
+              v-model="config.model"
+              type="text"
+              placeholder="例如: gpt-4o, claude-3-5-sonnet-20241022"
+              class="custom-input"
+            />
+
+            <!-- 预设提供商使用下拉选择 -->
+            <select v-else v-model="config.model" class="model-select">
               <option value="">选择模型</option>
               <optgroup v-for="modelGroup in [getProviderModels()]" :key="modelGroup[0]?.id" :label="config.apiProvider === 'openai' ? 'OpenAI' : 'Anthropic'">
                 <option v-for="model in modelGroup" :key="model.id" :value="model.id">
