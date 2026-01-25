@@ -1,0 +1,150 @@
+{
+    "errCode": 0,
+    "errMsg": "success",
+    "data": {
+        "total_page": 14,
+        "lang": "zh",
+        "markdown": [
+            {
+                "markdown_lang": [
+                    "最新更新：https://dl.acm.org/doi/10.1145/3597503.3639121\n\n",
+                    "研究论文\n\n",
+                    "## Fuzz4All：使用大型语言模型的通用模糊测试\n\n",
+                    "CHUNQIU STEVEN XIA，伊利诺伊大学厄巴纳-香槟分校，美国伊利诺伊州厄巴纳市\n\n",
+                    "MATTEO PALTENGHI，斯图加特大学，德国巴登-符腾堡州斯图加特\n\n",
+                    "JIA LE TIAN，伊利诺伊大学厄巴纳-香槟分校，美国伊利诺伊州厄巴纳市\n\n",
+                    "MICHAEL PRADEL，斯图加特大学，德国巴登-符腾堡州斯图加特\n\n",
+                    "LINGMING ZHANG，伊利诺伊大学厄巴纳-香槟分校，美国伊利诺伊州厄巴纳市\n\n",
+                    "开放获取支持提供者：\n\n",
+                    "斯图加特大学\n\n",
+                    "伊利诺伊大学厄巴纳-香槟分校\n\n",
+                    "![](oss://metaso-pipline-high-priority/metaso/pdf2texts_reading_mode/figures/8703429242213949440/0_img_in_image_box_963_235_1061_281.webp)\n\n",
+                    "\n## 发表日期：2024年4月12日\n\n",
+                    "BibTeX格式的引用\n\n",
+                    "ICSE'24：IEEE/ACM第46届国际软件工程会议\n\n",
+                    "2024年4月14日至20日\n\n",
+                    "葡萄牙里斯本\n\n",
+                    "会议赞助商：\n\n",
+                    "\n\n",
+                    "SIGSOFT\n\n"
+                ],
+                "markdown": [
+                    "Latest updates: https://dl.acm.org/doi/10.1145/3597503.3639121\n\n",
+                    "RESEARCH-ARTICLE\n\n",
+                    "## Fuzz4All: Universal Fuzzing with Large Language Models\n\n",
+                    "CHUNQIU STEVEN XIA, University of Illinois Urbana-Champaign, Urbana, IL, United States\n\n",
+                    "MATTEO PALTENGHI, University of Stuttgart, Stuttgart, Baden-Württemberg, Germany\n\n",
+                    "JIA LE TIAN, University of Illinois Urbana-Champaign, Urbana, IL, United States\n\n",
+                    "MICHAEL PRADEL, University of Stuttgart, Stuttgart, Baden-Württemberg, Germany\n\n",
+                    "LINGMING ZHANG, University of Illinois Urbana-Champaign, Urbana, IL, United States\n\n",
+                    "Open Access Support provided by:\n\n",
+                    "University of Stuttgart\n\n",
+                    "University of Illinois Urbana-Champaign\n\n",
+                    "![](https://files.metaso.cn/api/file/8703429242213949440/figures?type=1&filename=0_img_in_image_box_963_235_1061_281.webp)\n\n",
+                    "\n## Published: 12 April 2024\n\n",
+                    "Citation in BibTeX format\n\n",
+                    "ICSE '24: IEEE/ACM 46th International Conference on Software Engineering\n\n",
+                    "April 14 - 20, 2024\n\n",
+                    "Lisbon, Portugal\n\n",
+                    "Conference Sponsors:\n\n",
+                    "\n\n",
+                    "SIGSOFT\n\n"
+                ],
+                "page": 0,
+                "could_translate": true
+            },
+            {
+                "markdown_lang": [
+                    "# Fuzz4ALL: 通用语言模型的模糊测试\n\n",
+                    "## 1 引言\n\n",
+                    "模糊测试[69, 84]，也称为模糊攻击，是一种用于生成输入以暴露系统在测试（SUT）下的意外行为（例如崩溃）的自动化测试方法。研究人员和从业者已经成功地构建了实用的模糊测试工具，这些工具在发现现实世界系统中的大量漏洞和弱点方面取得了巨大成功[6]。特别是重要的SUT类是那些接受编程或形式语言输入的系统，例如编译器、运行时引擎和约束求解器。自此类系统是软件开发的基本构建块以来，已经提出了许多针对它们的模糊测试工具。例如，在编译器和运行时引擎中发现漏洞至关重要，因为它们可能影响所有相应的下游应用程序。\n\n",
+                    "传统的模糊测试器可以分为基于生成的$[34, 49, 81]$和基于变异的$[21, 31, 69]$。基于生成的模糊测试器旨在直接合成完整的代码片段，例如使用预定义的目标语言语法。相反，基于变异的模糊测试器应用变异操作符或转换规则来处理一组高质量的模糊种子。不幸的是，这两种传统模糊测试方法都面临以下限制和挑战：\n\n",
+                    "C1: 与目标系统和语言的紧密耦合。传统的模糊测试器通常设计为针对特定的语言或特定的SUT（软件测试用例）。然而，设计和实现一个模糊测试器是非常耗时的。例如，CSMITH  $ [81]$ 是一个用于C/C++编译器的模糊测试器，其代码超过80k行，而SyzKALLER  $ [70]$ 是一个用于Linux系统调用的模糊测试器，包含数万条手工制作的规则  $ [10]$ 以生成和修改系统调用。由于每个目标语言都是不同的，因此将一个输入语言中实现的模糊测试器的成果复用到另一个上往往并不容易。此外，对于一个SUT来说有效的模糊策略可能对另一个完全无效。\n\n",
+                    "C2: 对于演进的支持不足。现实世界中的系统不断演变，例如通过向输入语言添加新特性。传统模糊测试器针对特定版本的语言或SUT设计，可能在新的版本上失效，无法轻松用于测试新实现的特性。例如，CSMITH仅支持到C++11的一小部分特性，而自那以后，C++语言已经发生了显著变化。事实上，最近的工作[20]表明，在六个月的模糊测试期间，CSMmith未能发现任何最新的bug。\n\n"
+                ],
+                "markdown": [
+                    "# Fuzz4ALL: Universal Fuzzing with Large Language Models\n\n",
+                    "## 1 INTRODUCTION\n\n",
+                    "Fuzz testing [69, 84], also known as fuzzing, is an automated testing approach for generating inputs designed to expose unexpected behaviors, e.g., crashes, of a system under test (SUT). Researchers and practitioners have successfully built practical fuzzing tools, which have shown great success in finding numerous bugs and vulnerabilities in real-world systems [6]. A particularly important family of SUTs are systems that take in programming or formal language inputs, e.g., compilers, runtime engines, and constraint solvers. Numerous fuzzers have been proposed for such systems since they are the fundamental building blocks for software development [12]. For example, finding bugs in compilers and runtime engines is crucial because they can affect all corresponding downstream applications.\n\n",
+                    "Traditional fuzzers can be categorized into generation-based  $ [34, 49, 81] $  and mutation-based  $ [21, 31, 69] $ . Generation-based fuzzers aim to directly synthesize complete code snippets, e.g., using a predefined grammar for the target language. Instead of synthesizing from scratch, mutation-based fuzzers apply mutation operators or transformation rules to a set of high quality fuzzing seeds. Unfortunately, both traditional fuzzing approaches face the following limitations and challenges:\n\n",
+                    "C1: Tight coupling with target system and language. Traditional fuzzers are often designed to target a specific language or a particular SUT. However, designing and implementing a fuzzer is extremely time-consuming. For example, CSMITH  $ [81] $ , a fuzzer for C/C++ compilers, has more than 80k lines of code, while SyzKALLER  $ [70] $ , a fuzzer for Linux system calls, contains tens of thousands of handcrafted rules  $ [10] $  to generate and modify system calls. Because each target language is different, it is often non-trivial to reuse the effort of implementing a fuzzer from one input language for another. Furthermore, fuzzing strategies that work well for one SUT may not work at all for another one.\n\n",
+                    "C2: Lack of support for evolution. Real-world systems are constantly evolving, e.g., by adding new features to the input language. Traditional fuzzers designed for a specific version of a language or SUT may lose their effectiveness on a new version and cannot be easily used to test newly implemented features. For example, CSMITH supports only a limited set of features up to C++11, while the C++ language has evolved significantly since then. In fact, recent work  $ [20] $  shows that over a six-month fuzzing period, CSMITH was not able to uncover any new bugs in the latest releases of the\n\n"
+                ],
+                "page": 1,
+                "could_translate": true
+            },
+            {
+                "markdown_lang": [
+                    "GCC和Clang编译器显示新版本的编译器对现有模糊测试工具具有免疫力。\n\n",
+                    "C3: 生成能力受限。即使在特定目标语言的范围内，基于生成和基于变异的模糊测试通常也无法覆盖大部分输入空间。基于生成的模糊测试器严重依赖于输入语法来合成有效的代码，并且还配备了确保合成代码有效性的语义规则。为了生成大量有效的模糊测试输入或绕过难以建模的语言特性，基于生成的模糊测试器经常使用完整语言语法的一个子集进行测试，这限制了它们只能测试所有语言特性的一个子集。同样，基于变异的模糊测试器也受到其变异操作符的限制，并且需要高质量的种子，这些种子很难获得。\n\n",
+                    "我们的工作。我们提出了Fuzz4ALL，这是第一个在意义上是通用的模糊测试工具，它能够针对许多不同的输入语言和这些语言的不同特性进行模糊测试。我们的方法与现有的通用模糊测试工具（例如AFL$[50]$ 和LIBFUZZER$[43]$）不同，后者使用极其简单的变异，并且不了解目标语言，因此难以生成有意义的编程语言模糊测试输入。相反，我们的关键思想是利用大型语言模型（LLM）作为输入生成和变异引擎。由于LLM是在各种编程语言和其他形式语言的大规模示例上预训练的，它们具有对这些语言语法和语义的隐式理解。Fuzz4ALL通过使用LLM作为通用输入生成和变异引擎来利用这一能力。\n\n",
+                    "Fuzz4ALL 的输入是用户提供的描述 SUT 的文档，以及可选的特定于 SUT 特性的文档、示例代码或形式化规范。然而，这些用户输入可能过于冗长，无法直接用作 LLM 的提示。相反，我们提出了一种自动生成提示的步骤，该步骤自动提炼所有用户提供的输入，生成简洁有效的模糊测试提示。这个提示是生成模糊测试输入的初始输入。由于连续使用相同的提示会导致许多相似的模糊测试输入，因此我们提出了一个基于 LLM 的模糊测试循环，该循环迭代更新提示以生成一组多样化的模糊测试输入。为此，Fuzz4ALL 结合了先前迭代中生成的模糊测试输入和自然语言指令（例如，询问对这些输入进行变异）。然后将 LLM 生成的模糊测试输入传递给 SUT，并根据用户提供的测试预言对其进行验证，例如检查系统崩溃。\n\n",
+                    "FUZZ4ALL解决了之前讨论的传统模糊测试器的局限性和挑战。与使用单一目的的模糊测试器（C1）针对特定SUT进行详细设计不同，FUZZ4ALL通过使用LLM作为生成引擎，可以应用于广泛的SUT和输入语言。相比现有针对特定版本的SUT或输入语言（C2）的模糊测试器，FUZZ4ALL能够轻松适应目标的变化。例如，为了测试新实现的功能，用户只需提供与该功能相关的文档或示例代码即可。为了解决传统模糊测试器的生成能力有限的问题（C3），FUZZ4ALL利用了LLM在数十亿代码片段上经过预训练的事实，使其能够创建可能符合输入语言语法和语义约束的广泛示例。最后，FUZZ4ALL不需要对SUT进行任何仪器化，使得该方法易于实际应用。\n\n",
+                    "\n\n",
+                    "我们对六种输入语言（C、C++、SMT、Go、Java和Python）以及九个SUT进行了广泛评估。对于每种语言，我们将我们的方法与最先进的基于生成的和基于变异的模糊测试器进行比较。结果显示，Fuzz4ALL在所有语言中实现了最高的代码覆盖率，平均提高了之前状态下的覆盖率36.8%。此外，我们展示了Fuzz4ALL支持通用模糊测试和针对特定功能的用户决定提供的适当输入文档的模糊测试。最后，Fuzz4ALL检测到我们在所研究的SUT中的98个漏洞，其中64个已被开发者确认为以前未知的漏洞。\n\n",
+                    "贡献：本文做出了以下贡献：\n\n",
+                    "★ 通用模糊测试。我们引入了一种新的模糊测试维度，直接利用LLM的多语言能力来模糊测试具有广泛意义输入的多种SUT。\n\n",
+                    "★ 模拟提示用于模糊测试。我们提出了一个新颖的模拟提示阶段，通过自动提炼用户输入生成有效的SUT输入，支持通用和针对性的模糊测试。\n\n",
+                    "★ LLM-powered fuzzing loop。我们提出了一种算法，通过迭代修改提示并结合选定的示例和生成策略来持续生成新的模糊测试输入。\n\n",
+                    "★ 实际效果的证据。我们在六种流行语言和九个实际SUT（例如，GCC、CVC5、Go、javac和Qiskit）中展示了我们的方法显著提高了覆盖率，与最先进的模糊测试器相比（平均高出36.8%），并且检测到了98个漏洞，其中64个已被确认为以前未知的漏洞。\n\n",
+                    "## 2 背景及相关工作\n\n",
+                    "### 2.1 大型语言模型\n\n",
+                    "自然语言处理（NLP）的最新发展导致了大规模语言模型（LLM）在自然语言[8]和代码任务[80]上的广泛应用。最先进的LLM基于变压器[73]，可以分为仅解码器型（例如，GPT3 [8] 和 StarCoder [41]）、仅编码器型（例如，BERT [19] 和 CodeBERT [22]）以及解码器-编码器型（BART [40] 和 CodeT5 [83]）。最近，使用强化学习从人类反馈进行微调的指令式LLM（例如，ChatGPT [65] 和 GPT4 [55]）和通过微调训练的人工智能模型（AIH）[88]也被证明能够理解和遵循复杂的指令[4, 56, 65]。\n\n",
+                    "LLM通常是通过微调$[63]$或提示$[47]$来执行特定任务的。微调是通过在特定任务数据集上进一步训练来更新模型权重的过程。然而，合适的数据集可能无法获得，而且随着LLM规模的不断增长$[35]$，对LLM进行微调也变得越来越昂贵。另一方面，提示不需要显式地更新模型权重，而是为LLM提供任务描述，并可选地提供解决任务的一些示例。选择输入（即提示）的过程被称为提示工程$[47]$，其中用户尝试不同的输入指令，直到找到一个效果良好的提示。最近，研究人员提出了自提示方法$[68]$，这是一种使用LLM梯度自动选择软提示[42, 62]，即连续向量嵌入，或硬提示[64, 71]，即自然语言文本的过程。\n\n"
+                ],
+                "markdown": [
+                    "GCC and Clang compilers, showing that new versions of compilers are becoming immune to existing fuzzers.\n\n",
+                    "C3: Restricted generation ability. Even within the scope of a specific target language, both generation-based and mutation-based fuzzing often are unable to cover a large part of the input space. Generation-based fuzzers heavily rely on an input grammar to synthesize valid code, and additionally are equipped with semantic rules that ensure the validity of the synthesized code. To generate a high amount of valid fuzzing inputs or to side-step difficult-to-model language features, generation-based fuzzers often use a subset of the full language grammar, which limits them to test only a subset of all language features. Similarly, mutation-based fuzzers are limited by their mutation operators and require high quality seeds that can be difficult to obtain.\n\n",
+                    "Our work. We present Fuzz4ALL, the first fuzzer that is universal in the sense that it can target many different input languages and many different features of theses languages. Our approach fundamentally differs from existing general-purpose fuzzers, e.g., AFL  $ [50] $  and LIBFUZZER  $ [43] $ , which use extremely simple mutations, are unaware of the target language, and therefore struggle to produce meaningful programming language fuzzing inputs. Instead, our key idea is to leverage a large language model (LLM) as an input generation and mutation engine. Because LLMs are pre-trained on large amounts of examples in various programming languages and other formal languages, they come with an implicit understanding of the syntax and semantics of these languages. Fuzz4ALL leverages this ability by using an LLM as a universal input generation and mutation engine.\n\n",
+                    "The input to Fuzz4ALL are user-provided documents describing the SUT, and optionally, specific features of the SUT to focus on, e.g., in the form of documentation, example code, or formal specifications. However, these user inputs may be too verbose to directly use as a prompt for the LLM. Instead of requiring the user to manually engineer a prompt  $ [47] $ , which is time-consuming, we present an autoprompting step that automatically distills all user-provided inputs into a concise and effective prompt for fuzzing. This prompt is the initial input to an LLM that generates fuzzing inputs. Since continuously sampling with the same prompt would lead to many similar fuzzing inputs, we present an LLM-powered fuzzing loop, which iteratively updates the prompt to generate a diverse set of fuzzing inputs. To this end, Fuzz4ALL combines fuzzing inputs generated in previous iterations with natural language instructions, e.g., asking to mutate these inputs. The LLM-generated fuzzing inputs are then passed to the SUT, which we validate against a user-provided test oracle, such as checking for system crashes.\n\n",
+                    "FUZZ4ALL addresses the previously discussed limitations and challenges of traditional fuzzers. Instead of meticulously designing a single-purpose fuzzer for a specific SUT (C1), FUZZ4ALL, by using an LLM as the generation engine, can be applied to a wide range of SUTs and input languages. Compared to existing fuzzers that target a specific version of the SUT or input language (C2), FUZZ4ALL can easily evolve with the target. For example, to fuzz-test a newly implemented feature, a user can simply provide documentation or example code related to that feature. To address the restricted generation ability of traditional fuzzers (C3), FUZZ4ALL exploits the fact that LLMs are pre-trained on billions of code snippets, enabling them to create a wide range of examples that likely obey the syntactic and semantic constraints of the input language. Finally, FUZZ4ALL does not require any instrumentation of the SUT, making the approach easily applicable in practice.\n\n",
+                    "\n\n",
+                    "We perform an extensive evaluation on six input languages (C, C++, SMT, Go, Java, and Python) and nine SUTs. For each of them, we compare our approach against state-of-the-art generation-based and mutation-based fuzzers. The results show that Fuzz4ALL achieves the highest code coverage across all languages, improving the previous state-of-the-art coverage by 36.8%, on average. Additionally, we demonstrate that Fuzz4ALL supports both general fuzzing and fuzzing targeted at specific features of the SUT, which a user decides upon by providing adequate input documents. Finally, Fuzz4ALL detects 98 bugs across our studied SUTs, with 64 already confirmed by developers as previously unknown.\n\n",
+                    "Contributions: This paper makes the following contributions:\n\n",
+                    "★ Universal fuzzing. We introduce a new dimension for fuzzing that directly leverages the multi-lingual capabilities of LLMs to fuzz-test many SUTs with a wide range of meaningful inputs.\n\n",
+                    "★ Autoprompting for fuzzing. We present a novel autoprompting stage to support both general and targeted fuzzing by automatically distilling user inputs into a prompt that is effective at generating inputs to the SUT.\n\n",
+                    "★ LLM-powered fuzzing loop. We present an algorithm that continuously generates new fuzzing inputs by iteratively modifying the prompt with selected examples and generation strategies.\n\n",
+                    "★ Evidence of real-world effectiveness. We show across six popular languages and nine real-world SUTs (e.g., GCC, CVC5, Go, javac, and Qiskit) that our approach significantly improves coverage compared to state-of-the-art fuzzers (avg. 36.8%) and detects 98 bugs, with 64 already confirmed as previously unknown.\n\n",
+                    "## 2 BACKGROUND AND RELATED WORK\n\n",
+                    "### 2.1 Large Language Models\n\n",
+                    "Recent developments in natural language processing (NLP) has led to the wide-spread adoption of large language models (LLMs) for both natural language [8] and code tasks [80]. State-of-the-art LLMs are based on transformers [73] and can be classified into decoder-only (e.g., GPT3 [8] and StarCoder [41]), encoder-only (e.g., BERT [19] and CodeBERT [22]) and encoder-decoder (BART [40] and CodeT5 [83]) models. More recently, instruction-based LLMs (e.g., ChatGPT [65] and GPT4 [55]) and LLMs fine-tuned using reinforcement learning from human feedback (RLHF) [88] are shown to understand and follow complex instructions [4, 56, 65].\n\n",
+                    "LLMs are typically either fine-tuned  $ [63] $  or prompted  $ [47] $  to perform specific tasks. Fine-tuning updates the model weights through further training on a task-specific dataset. However, suitable datasets may be unavailable, and as LLM sizes continue to grow  $ [35] $ , fine-tuning an LLM is also increasingly expensive. Prompting, on the other hand, does not require explicitly updating the model weights, but provides the LLM with a description of the task, and optionally, a few examples of solving the task. The process of picking the input (i.e., prompt) is known as prompt engineering  $ [47] $ , where a user tries different input instructions until finding one that works well. Recently, researchers have proposed autoprompting  $ [68] $ , an automatic process that uses LLM gradients to select either soft prompts [42, 62], i.e., continuous vector embeddings, or hard prompts [64, 71], i.e., natural language text. \n\n"
+                ],
+                "page": 2,
+                "could_translate": true
+            },
+            {
+                "markdown_lang": [
+                    "最近，研究人员通过计算代理分数来替代基于梯度的方法[87]。\n\n",
+                    "这项工作利用了LLMs解决模糊测试的重要问题。与传统的自动生成提示和基于代理的方法不同，我们的自动生成提示策略直接使用GPT4合成提示，并根据模糊测试的具体目标对其进行评分。\n\n",
+                    "### 2.2 模糊测试和测试\n\n",
+                    "模糊测试旨在生成导致SUT意外行为的输入。传统的模糊器可以分为基于生成的$[34, 49, 81]$ 和基于变异的$[21, 31, 69]$ 。基于生成的模糊器使用预定义的语法和目标语言语义的内置知识来创建完整的代码片段。CSMITH$[81]$和YARPGEN$[49]$硬编码了语言规范以确保生成的代码片段的有效性，分别用于测试C和C++编译器。JSFUNFuzz$[34]$结合了语言语法和历史错误触发代码片段来生成新的输入以测试JavaScript引擎。除了基本的变异外，研究人员还开发了针对确保类型一致性$[11, 59]$、添加历史错误触发代码片段$[31, 86]$以及覆盖率反馈$[3, 21, 46]$ 的复杂变换。为了从生成和变异中受益，许多模糊器采用了这两种方法的组合$[12, 51]$。\n\n",
+                    "与上述针对特定SUT或语言的模糊化研究不同，另一类研究是关于通用模糊化的。AFL$[50]$和LIBFZZER$[43]$是使用遗传算法并结合适应度函数来优先选择模糊输入以实现新覆盖的通用模糊器。这些突变对于接受编程语言作为输入的SUT来说是无意识的，专注于字节级转换。也就是说，在应用于接收编程语言作为输入的SUT时，通用模糊器极不可能产生有效的输入。最近的工作$[28]$则添加了基于正则表达式的突变操作符，以匹配常见的编程语句（例如，将+更改为-）。这些突变操作符的简单性限制了它们在覆盖新代码方面的能力，特别是在更复杂的语言中，如C$[21, 28]$。POLYGLOT$[14]$是另一种非语言特定的模糊器，它首先使用特定于语言的语法解析种子程序为统一中间表示形式，然后使用一组突变操作符生成新的程序。尽管如此，POLYGLOT仍然使用有限的突变集，并且无法达到像专为某一语言设计的模糊器那样高的覆盖率$[21]$。\n\n",
+                    "为了补充传统的模糊测试技术并将其应用于新兴领域，提出了基于学习的模糊器。先前的学习型技术主要集中在训练神经网络生成模糊输入。TREEFuzz $ [60]$ 解析训练语料库为树结构，并通过树遍历学习一个概率性、生成式模型来合成新的模糊输入。深度学习模型已被用于模糊PDF解析器 $ [26]$ ，OpenCL $ [17]$ ，C语言 $ [48]$ ，网络协议 $ [85]$ 和JavaScript $ [37]$ 。最近，研究人员还直接利用LLM进行特定库的模糊测试，例如TITANFUZZ $ [18]$ 使用Codex $ [13]$ 生成种子程序和InCoder $ [24]$ 进行模板基突变以模糊深度学习库 $ [61, 72]$ 。\n\n",
+                    "\n\n",
+                    "与之前的基于学习和LLM的模糊测试器不同，Fuzz4ALL 可以轻松应用于多种编程语言。以往的工作通常针对特定语言设计了模型或需要使用特定的语言解析器。即使是最近的基于LLM的方法TITANFUZZ，也是专门为深度学习库设计的手工构建提示和变异模式而开发的，因此无法轻易扩展到其他SUT（软件单元测试）。此外，与现有的技术不同，这些技术在特定语言中生成通用的模糊输入，而Fuzz4ALL还支持目标模糊测试，可以生成专注于选定特征的代码片段。\n\n",
+                    "除了模糊测试之外，LLM还被应用于相关问题的单元测试生成$[5, 39, 54, 66, 74, 82]$。Co-DAMoSA$[39]$将传统的基于查询的软件测试与Codex结合起来，以在达到覆盖率高原时生成新的单元测试。TestPilot$[66]$通过方法源代码和示例用法来提示Codex生成单元测试并修复不正确生成的测试。与这些需要特定类型输入（例如函数源代码）且仅适用于单元测试的基于LLM的测试生成器不同$[54, 66]$，Fuzz4ALL利用广泛使用的模糊测试或acles，如崩溃，并且完全自动化。此外，这种单元测试生成器通常需要手动工作来检查或完成测试，因为它们受到自动生成的测试-Oracle的限制，即使是最先进的LLM也无法总是可靠地生成。相反，Fuzz4ALL利用广泛使用的模糊测试或acles，如崩溃，并且是全自动化的。\n\n",
+                    "3 FUZZ4ALL方法\n\n",
+                    "我们提出了Fuzz4ALL，这是一种通用的模糊测试工具，利用大型语言模型（LLM）支持对任何接受编程语言输入的SUT进行通用和针对性的模糊测试。图1概述了我们的方法。Fuzz4ALL首先接收用户描述模糊测试输入的任意输入，例如SUT的文档、代码片段或规范。由于用户输入可能很长、冗余且部分不相关，该方法会将其提炼为简洁但信息丰富的提示来生成模糊测试输入。为此，Fuzz4ALL执行了一种自动生成提示步骤（第3.1节），通过使用最先进的状态更新大型语言模型采样多个不同的候选提示。每个候选提示都传递给生成LLM以生成代码片段（即模糊测试输入）。然后，Fuzz4ALL选择产生最高质量模糊测试输入的提示。\n\n",
+                    "Fuzz4ALL 建立在两个模型之上，一个是用于减少给定用户输入的蒸馏 LLM，另一个是用于生成模糊测试输入的生成 LLM，以平衡不同 LLM 提供的成本和效益之间的权衡。由于蒸馏 LLM 需要理解并提炼任意用户输入，我们使用了一个具有强大自然语言理解能力的高端、大型基础模型作为生成 LLM。然而，直接使用这样一个大型模型进行输入生成会因为自回归生成的高推理成本而效率低下。相反，为了高效地进行模糊测试，Fuzz4ALL 使用一个较小的模型作为生成 LLM。尽管我们的方法是通用的\n\n"
+                ],
+                "markdown": [
+                    "Even more recently, researchers have substituted gradient-based methods by computing a proxy score of effectiveness [87].\n\n",
+                    "This work leverages LLMs for the important problem of fuzzing. Unlike traditional autoprompting and proxy-based approaches, our autoprompting strategy directly synthesizes prompts using GPT4 and scores them according to a fuzzing-specific goal.\n\n",
+                    "### 2.2 Fuzzing and Testing\n\n",
+                    "Fuzz testing aims to generate inputs that cause unexpected behaviors of the SUT. Traditional fuzzers can be classified into generation-based  $ [34, 49, 81] $  and mutation-based  $ [21, 31, 69] $ . Generation-based fuzzers create complete code snippets using pre-defined grammars and built-in knowledge of the semantics of the target language. CSMITH  $ [81] $  and YARPGEN  $ [49] $  hard-code language specifications to ensure the validity of generated code snippets to test C and C++ compilers, respectively. JSFUNFuzz  $ [34] $  combines a language grammar with historical bug-triggering code snippets to generate new inputs to test JavaScript engines. Generation-based fuzzers have also been used to test OpenCL  $ [44] $ , the JVM  $ [11] $ , CUDA  $ [33] $ , deep learning compilers  $ [45] $ , Datalog engines  $ [53] $ , and interactive debuggers  $ [38] $ . Mutation-based fuzzers  $ [69] $  iteratively perform transformations on seeds to generate new fuzzing inputs. In addition to basic mutations, researchers have developed complex transformations targeted at ensuring type consistency  $ [11, 59] $ , adding historical bug-triggering code snippets  $ [31, 86] $ , and coverage feedback  $ [3, 21, 46] $ . To benefit from both generation and mutation, many fuzzers use a combination of both approaches  $ [12, 51] $ .\n\n",
+                    "Different from the above fuzzers, which target specific SUTs or languages, another line of research is on general-purpose fuzzing. AFL  $ [50] $  and LIBFZZER  $ [43] $  are general-purpose fuzzers that use genetic algorithms with a fitness function to prioritize fuzzing inputs for further mutations that achieve new coverage. These mutations are unaware of the SUT and focus on byte-level transformations. That is, when applied on SUTs that receive programming languages as input, general-purpose fuzzers are extremely unlikely to produce valid inputs. Recent work  $ [28] $  has instead added regular expression-based mutation operators to match common programming statements (e.g., change + to -). The simplicity of these mutation operators limits the ability of such fuzzers at covering new code, especially in more complex languages, such as C  $ [21, 28] $ . POLYGLOT  $ [14] $  is another language-agnostic fuzzer, which first parses the seed programs into a uniform intermediate representation using a language-specific grammar and then uses a set of mutation operators to generate new programs. While promising, POLYGLOT still uses a limited set of mutations and cannot achieve the same level of coverage as fuzzers that are designed for a particular language  $ [21] $ .\n\n",
+                    "To complement traditional fuzzing techniques and apply fuzzing to emerging domains, learning-based fuzzers have been proposed. Prior learning-based techniques mainly focus on training a neural network to generate fuzzing inputs. TREEFuzz  $ [60] $  parses the training corpus into a tree structure and through tree traversal, learns a probabilistic, generative model that synthesizes new fuzzing inputs. Deep learning models have been used to fuzz PDF parsers  $ [26] $ , OpenCL  $ [17] $ , C  $ [48] $ , network protocols  $ [85] $ , and JavaScript  $ [37] $ . Very recently, researchers have also directly leveraged LLMs for fuzzing specific libraries, e.g., TITANFUZZ  $ [18] $  uses Codex  $ [13] $  to generate seed programs and InCoder  $ [24] $  to perform template-based mutation for fuzzing deep learning libraries  $ [61, 72] $ .\n\n",
+                    "\n\n",
+                    "Unlike prior learning- and LLM-based fuzzers, Fuzz4ALL is easily applicable across many programming languages. Prior work trains language-specific models or requires language-specific parsing. Even TITANFUZZ, a recent LLM-based approach, is designed specifically for deep learning libraries with hand-crafted prompts and mutation patterns, and therefore cannot be easily extended to other SUTs. Furthermore, unlike existing techniques, which produce general fuzzing inputs in a particular language, Fuzz4ALL additionally supports targeted fuzzing, which can generate code snippets that focus on selected features.\n\n",
+                    "In addition to fuzzing, LLMs have also been applied to the related problem of unit test generation  $ [5, 39, 54, 66, 74, 82] $ . Co-DAMoSA  $ [39] $  interleaves traditional search-based software testing with querying Codex to generate new unit tests whenever a coverage plateau is reached. TestPilot  $ [66] $  prompts Codex with method source code and example usages to generate unit tests and to fix incorrectly generated tests. In contrast to these LLM-based test generators, which require a specific type of input (e.g., function source code) and only work for unit testing  $ [54, 66] $ , by using our novel autoprompting stage, Fuzz4ALL can take inputs in arbitrary formats for both general and targeted fuzzing. Furthermore, such unit test generators often require manual work to check or complete the tests as they are limited by automatically generated test-oracles, which even state-of-the-art LLMs  $ [15, 65] $  cannot always produce reliably. Instead, Fuzz4ALL leverages widely-used fuzzing oracles, such as crashes, and is fully automated.\n\n",
+                    "## 3 FUZZ4ALL APPROACH\n\n",
+                    "We present Fuzz4ALL, a universal fuzzer that leverages LLMs to support both general and targeted fuzzing of any SUTs that take in programming language input. Figure 1 provides an overview of our approach. Fuzz4ALL first takes in arbitrary user input that describes the fuzzing inputs to be generated, e.g., documentation of the SUT, example code snippets, or specifications. As the user input may be long, redundant, and partially irrelevant, the approach distills it into a concise but informative prompt for fuzzing. To this end, Fuzz4ALL performs an autoprompting step (Section 3.1) by using a large, state-of-the-art distillation LLM to sample multiple different candidate prompts. Each candidate prompt is passed on to the generation LLM to generate code snippets (i.e., fuzzing inputs). Fuzz4ALL then selects the prompt that produces the highest quality fuzzing inputs.\n\n",
+                    "Fuzz4ALL builds on two models, a distillation LLM that reduces the given user input and a generation LLM that creates the fuzzing inputs, to balance the trade-off between the costs and benefits different LLMs provide. Because the distillation LLM needs to understand and distill arbitrary user input, we use a high-end, large foundational model with strong natural language understanding abilities. However, directly using such a large model for input generation would be inefficient due to the high inference cost of autoregressive generation. Instead, to perform efficient fuzzing, Fuzz4ALL uses a smaller model as the generation LLM. While our approach is general\n\n"
+                ],
+                "page": 3,
+                "could_translate": true
+            }
+        ]
+    }
+}
