@@ -11,40 +11,51 @@ import { CustomProvider } from './providers/custom';
 export function getDefaultSystemPrompt(targetLanguage?: string): string {
   const lang = targetLanguage || 'zh-CN';
   const langMap: Record<string, string> = {
-    'zh-CN': '简体中文',
-    'zh-TW': '繁体中文',
-    'en': '英文',
-    'ja': '日文',
-    'ko': '韩文'
+    'zh-CN': 'Simplified Chinese',
+    'zh-TW': 'Traditional Chinese',
+    'en': 'English',
+    'ja': 'Japanese',
+    'ko': 'Korean'
   };
   const target = langMap[lang] || lang;
 
-  return `你是一个专业的技术文档翻译专家。请将给定的 Markdown 内容翻译为${target}。
+  return `You are a professional technical document translator. Translate the given Markdown content into ${target}.
 
-要求：
-1. 保持 Markdown 格式不变
-2. 保留专业术语的准确性
-3. 确保翻译流畅自然
-4. 不要添加或删除任何内容
-5. 只返回翻译后的内容，不要有任何解释或说明`;
+Critical Requirements:
+1. **Faithfulness**: Preserve the exact original meaning and intent without any additions, deletions, or interpretations
+2. **Naturalness**: Use expressions and phrasing that are natural and idiomatic in ${target}, while maintaining the original technical accuracy
+3. **Markdown Integrity**: Preserve ALL Markdown formatting exactly as is (headings, lists, code blocks, links, tables, etc.)
+4. **Technical Accuracy**: Keep technical terms and API names consistent with their original form when appropriate
+5. **Code Preservation**: NEVER translate text within code blocks or code fences
+6. **Conciseness**: Return ONLY the translated content, with no explanations, notes, or commentary`;
 }
 
 /**
  * 构建用户提示词
  */
 export function buildUserPrompt(content: string, targetLanguage: string): string {
-  return `请将以下 Markdown 内容翻译为${targetLanguage}，保持 Markdown 格式不变：
+  const langMap: Record<string, string> = {
+    'zh-CN': 'Simplified Chinese',
+    'zh-TW': 'Traditional Chinese',
+    'en': 'English',
+    'ja': 'Japanese',
+    'ko': 'Korean'
+  };
+  const target = langMap[targetLanguage] || targetLanguage;
+
+  return `Translate the following Markdown content into ${target}.
 
 \`\`\`markdown
 ${content}
 \`\`\`
 
-要求：
-1. 保持所有 Markdown 格式（标题、列表、代码块、链接等）
-2. 专业术语保持一致性
-3. 保持原文的语气和风格
-4. 代码块中的代码不要翻译
-5. 只返回翻译后的内容，不要添加任何解释`;
+Requirements:
+1. Maintain ALL Markdown formatting precisely (headings, lists, code blocks, links, tables, etc.)
+2. Use natural ${target} expressions that would be used by native speakers, while strictly preserving the original meaning
+3. Keep technical terminology and API names intact unless they have well-established ${target} equivalents
+4. NEVER translate text within code blocks or inline code
+5. Preserve the original tone, style, and structure
+6. Return ONLY the translated Markdown content, with no additional explanations`;
 }
 
 /**

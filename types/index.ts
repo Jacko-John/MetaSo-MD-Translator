@@ -81,6 +81,7 @@ export type MessageType =
   | 'CHECK_TRANSLATION' // 检查翻译是否存在
   | 'REQUEST_TRANSLATION' // 请求翻译
   | 'TRANSLATION_READY' // 翻译完成通知
+  | 'TRANSLATION_PROGRESS' // 翻译进度更新
   | 'GET_TRANSLATION' // 获取翻译结果
   | 'SHOW_CONSENT_PROMPT' // 显示用户同意弹窗
   | 'USER_CONSENT_RESPONSE' // 用户同意响应
@@ -88,6 +89,7 @@ export type MessageType =
   | 'UPDATE_CONFIG' // 更新配置
   | 'GET_HISTORY' // 获取历史记录
   | 'DELETE_TRANSLATION' // 删除翻译记录
+  | 'RETRY_TRANSLATION' // 重试失败的翻译
   | 'CLEAR_ALL' // 清空所有数据
   | 'ERROR' // 错误消息
   ;
@@ -136,6 +138,19 @@ export interface TranslationReadyMessage extends BaseMessage {
   payload: {
     id: string;
     translation: TranslationEntry;
+  };
+}
+
+// 翻译进度更新
+export interface TranslationProgressMessage extends BaseMessage {
+  type: 'TRANSLATION_PROGRESS';
+  payload: {
+    id: string;
+    currentBatch: number;
+    totalBatches: number;
+    currentParagraph: number;
+    totalParagraphs: number;
+    translatedTokens: number;
   };
 }
 
@@ -191,6 +206,14 @@ export interface DeleteTranslationMessage extends BaseMessage {
   };
 }
 
+// 重试翻译
+export interface RetryTranslationMessage extends BaseMessage {
+  type: 'RETRY_TRANSLATION';
+  payload: {
+    id: string;
+  };
+}
+
 // 清空所有数据
 export interface ClearAllMessage extends BaseMessage {
   type: 'CLEAR_ALL';
@@ -212,6 +235,7 @@ export type Message =
   | CheckTranslationMessage
   | RequestTranslationMessage
   | TranslationReadyMessage
+  | TranslationProgressMessage
   | GetTranslationMessage
   | ShowConsentPromptMessage
   | UserConsentResponseMessage
@@ -219,6 +243,7 @@ export type Message =
   | UpdateConfigMessage
   | GetHistoryMessage
   | DeleteTranslationMessage
+  | RetryTranslationMessage
   | ClearAllMessage
   | ErrorMessage
   ;
@@ -246,6 +271,11 @@ export interface TranslationConfig {
   maxTokens?: number;
   temperature?: number;
   systemPrompt?: string;
+  onProgress?: (progress: {
+    current: number;
+    total: number;
+    content: string;
+  }) => void;
 }
 
 /**
@@ -269,6 +299,7 @@ export interface TranslationResult {
 export interface TranslationProvider {
   name: string;
   translate(content: string, config: TranslationConfig): Promise<string>;
+  translateWithStream?(content: string, config: TranslationConfig): Promise<string>;
   estimateTokens(text: string): number;
 }
 

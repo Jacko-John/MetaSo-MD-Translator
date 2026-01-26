@@ -14,6 +14,67 @@ import type {
   MetaSoMarkdownItem
 } from '@/types';
 
+// ========================================================================
+// API 频率限制器
+// ========================================================================
+
+class RateLimiter {
+  private requests: number[] = [];
+  private maxRequests: number;
+  private windowMs: number;
+
+  constructor(maxRequests: number = 60, windowMs: number = 60000) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+  }
+
+  /**
+   * 检查是否可以发起请求
+   */
+  canMakeRequest(): boolean {
+    const now = Date.now();
+    // 移除窗口外的请求记录
+    this.requests = this.requests.filter(time => now - time < this.windowMs);
+    return this.requests.length < this.maxRequests;
+  }
+
+  /**
+   * 记录一次请求
+   */
+  recordRequest(): void {
+    this.requests.push(Date.now());
+  }
+
+  /**
+   * 获取需要等待的时间（毫秒）
+   */
+  getWaitTime(): number {
+    const now = Date.now();
+    this.requests = this.requests.filter(time => now - time < this.windowMs);
+
+    if (this.requests.length < this.maxRequests) {
+      return 0;
+    }
+
+    const oldestRequest = this.requests[0];
+    return oldestRequest + this.windowMs - now;
+  }
+
+  /**
+   * 等待直到可以发起请求
+   */
+  async waitIfNeeded(): Promise<void> {
+    const waitTime = this.getWaitTime();
+    if (waitTime > 0) {
+      console.log(`[RateLimiter] 达到频率限制，等待 ${Math.ceil(waitTime / 1000)} 秒...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+}
+
+// 创建全局频率限制器实例（每分钟最多 60 次请求）
+const rateLimiter = new RateLimiter(60, 60000);
+
 export default defineBackground(() => {
   console.log('[MetaSo Translator] Background script 已启动');
 
@@ -62,6 +123,9 @@ export default defineBackground(() => {
 
         case 'DELETE_TRANSLATION':
           return await deleteTranslation(message.payload);
+
+        case 'RETRY_TRANSLATION':
+          return await handleRetryTranslation(message.payload, sender);
 
         case 'CLEAR_ALL':
           return await clearAll();
@@ -195,6 +259,28 @@ export default defineBackground(() => {
       return { success: true, data: existingTranslation };
     }
 
+    // 2.5. 创建 pending 记录（确保即使中途失败也能在历史记录中看到）
+    await indexedDB.setTranslation({
+      id: payload.id,
+      contentId: payload.id,
+      translatedContent: {
+        errCode: 0,
+        errMsg: 'Translation in progress',
+        data: {
+          lang: null,
+          markdown: []
+        }
+      },
+      meta: {
+        translatedAt: Date.now(),
+        model: config.model,
+        provider: config.apiProvider,
+        tokenCount: 0,
+        duration: 0
+      },
+      status: 'pending'
+    });
+
     // 3. 开始翻译 - 按页分批翻译
     try {
       const data = payload.content.data;
@@ -224,6 +310,15 @@ export default defineBackground(() => {
 
       // 3. 逐批翻译
       const translatedParagraphs = new Map<string, string>();
+      let currentParagraphCount = 0;
+
+      // 缓存当前的翻译状态，避免频繁更新 IndexedDB
+      let cachedProgress = {
+        tokenCount: 0,
+        lastUpdateTime: 0
+      };
+      const PROGRESS_UPDATE_INTERVAL = 5000; // 每 5 秒最多更新一次 IndexedDB
+
       for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
         const batch = batches[batchIndex];
         const batchText = batch.map(p => p.text).join('\n\n');
@@ -234,7 +329,10 @@ export default defineBackground(() => {
         console.log(`[Background]   包含段落 ${batchStart.itemIndex}-${batchStart.paragraphIndex} 到 ${batchEnd.itemIndex}-${batchEnd.paragraphIndex}`);
         console.log(`[Background]   批次大小: ${batch.length} 个段落, 约 ${estimateTokens(batchText)} tokens`);
 
-        // 翻译当前批次
+        // 应用频率限制
+        await rateLimiter.waitIfNeeded();
+
+        // 翻译当前批次，使用流式传输
         const translationResult = await translationService.translate(batchText, {
           apiKey: config.apiKey,
           apiProvider: config.apiProvider,
@@ -242,8 +340,51 @@ export default defineBackground(() => {
           model: config.model,
           targetLanguage: config.language,
           maxTokens: 8192,
-          temperature: 0.3
+          temperature: 0.3,
+          onProgress: (progress) => {
+            const now = Date.now();
+            const newTokenCount = totalTokens + progress.current;
+
+            // 只发送进度消息到前端（不更新 IndexedDB）
+            notifyTranslationProgress(sender.tab?.id, payload.id, {
+              currentBatch: batchIndex + 1,
+              totalBatches: batches.length,
+              currentParagraph: currentParagraphCount,
+              totalParagraphs: totalParagraphs,
+              translatedTokens: newTokenCount
+            });
+
+            // 缓存进度，定期更新 IndexedDB（最多每秒一次）
+            if (now - cachedProgress.lastUpdateTime > PROGRESS_UPDATE_INTERVAL) {
+              cachedProgress.tokenCount = newTokenCount;
+              cachedProgress.lastUpdateTime = now;
+
+              indexedDB.setTranslation({
+                id: payload.id,
+                contentId: payload.id,
+                translatedContent: {
+                  errCode: 0,
+                  errMsg: 'Translation in progress',
+                  data: {
+                    lang: null,
+                    markdown: []
+                  }
+                },
+                meta: {
+                  translatedAt: Date.now(),
+                  model: config.model,
+                  provider: config.apiProvider,
+                  tokenCount: newTokenCount,
+                  duration: 0
+                },
+                status: 'pending'
+              }).catch(console.error);
+            }
+          }
         });
+
+        // 记录请求到频率限制器
+        rateLimiter.recordRequest();
 
         if (!translationResult.success || !translationResult.content) {
           throw new Error(`批次 ${batchIndex + 1} 翻译失败: ${translationResult.error || '未知错误'}`);
@@ -260,6 +401,30 @@ export default defineBackground(() => {
         });
 
         totalTokens += translationResult.meta?.tokenCount || 0;
+        currentParagraphCount += batch.length;
+
+        // 批次完成时更新 IndexedDB
+        indexedDB.setTranslation({
+          id: payload.id,
+          contentId: payload.id,
+          translatedContent: {
+            errCode: 0,
+            errMsg: 'Translation in progress',
+            data: {
+              lang: null,
+              markdown: []
+            }
+          },
+          meta: {
+            translatedAt: Date.now(),
+            model: config.model,
+            provider: config.apiProvider,
+            tokenCount: totalTokens,
+            duration: 0
+          },
+          status: 'pending'
+        }).catch(console.error);
+
         console.log(`[Background]   批次 ${batchIndex + 1} 翻译完成`);
       }
 
@@ -382,7 +547,9 @@ export default defineBackground(() => {
    * 获取历史记录
    */
   async function getHistory(): Promise<MessageResponse> {
-    const translations = await indexedDB.getCompletedTranslations();
+    const translations = await indexedDB.getAllTranslations();
+    // 按翻译时间倒序排列
+    translations.sort((a, b) => b.meta.translatedAt - a.meta.translatedAt);
     return { success: true, data: translations };
   }
 
@@ -400,6 +567,37 @@ export default defineBackground(() => {
   async function clearAll(): Promise<MessageResponse> {
     await indexedDB.clearAll();
     return { success: true };
+  }
+
+  /**
+   * 重试失败的翻译
+   */
+  async function handleRetryTranslation(
+    payload: { id: string },
+    sender: any
+  ): Promise<MessageResponse> {
+    console.log('[Background] 重试翻译:', payload.id);
+
+    // 1. 获取原始内容
+    const content = await indexedDB.getContent(payload.id);
+    if (!content) {
+      return { success: false, error: '找不到原始内容' };
+    }
+
+    // 2. 删除旧的翻译记录
+    await indexedDB.deleteTranslation(payload.id);
+
+    // 3. 重新请求翻译
+    return await handleRequestTranslation(
+      {
+        id: content.id,
+        url: content.url,
+        fileId: content.fileId,
+        pageId: content.pageId,
+        content: content.originalContent
+      },
+      sender
+    );
   }
 
   // ========================================================================
@@ -423,6 +621,36 @@ export default defineBackground(() => {
       }
     }).catch(error => {
       console.error('[Background] Failed to send translation ready message:', error);
+    });
+  }
+
+  /**
+   * 通知翻译进度
+   */
+  function notifyTranslationProgress(
+    tabId: number | undefined,
+    id: string,
+    progress: {
+      currentBatch: number;
+      totalBatches: number;
+      currentParagraph: number;
+      totalParagraphs: number;
+      translatedTokens: number;
+    }
+  ) {
+    if (!tabId) {
+      console.warn('[Background] No tab ID, cannot notify progress');
+      return;
+    }
+
+    browser.tabs.sendMessage(tabId, {
+      type: 'TRANSLATION_PROGRESS',
+      payload: {
+        id,
+        ...progress
+      }
+    }).catch(error => {
+      console.error('[Background] Failed to send progress message:', error);
     });
   }
 

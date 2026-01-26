@@ -138,9 +138,29 @@ export default defineContentScript({
      */
     async function sendMessageToBackground(message: Message): Promise<MessageResponse> {
       return new Promise((resolve) => {
-        browser.runtime.sendMessage(message, (response: any) => {
-          resolve(response || { success: false, error: 'No response' });
-        });
+        const handleResponse = (response: any) => {
+          // 检查是否有错误
+          if (browser.runtime.lastError) {
+            console.error('[MetaSo Translator] Background communication error:', browser.runtime.lastError);
+            resolve({ success: false, error: browser.runtime.lastError.message || 'Communication error' });
+            return;
+          }
+
+          // 检查响应是否有效
+          if (response && typeof response === 'object') {
+            resolve(response);
+          } else {
+            console.error('[MetaSo Translator] Invalid response from background:', response);
+            resolve({ success: false, error: 'Invalid response from background' });
+          }
+        };
+
+        browser.runtime.sendMessage(message, handleResponse);
+
+        // 设置超时（5秒）
+        setTimeout(() => {
+          resolve({ success: false, error: 'Request timeout - no response from background' });
+        }, 5000);
       });
     }
 

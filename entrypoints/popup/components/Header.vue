@@ -36,7 +36,6 @@
   color: white;
   padding: 20px;
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
-  border-radius: 16px 16px 0 0;
 }
 
 .header-content h1 {

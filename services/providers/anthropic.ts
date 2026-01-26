@@ -11,6 +11,11 @@ export class AnthropicProvider implements TranslationProvider {
   readonly baseUrl = 'https://api.anthropic.com/v1/messages';
 
   async translate(content: string, config: TranslationConfig): Promise<string> {
+    // 如果配置了进度回调，使用流式传输
+    if (config.onProgress) {
+      return this.translateWithStream(content, config);
+    }
+
     const systemPrompt = config.systemPrompt || getDefaultSystemPrompt(config.targetLanguage);
 
     const requestBody = {
@@ -47,6 +52,91 @@ export class AnthropicProvider implements TranslationProvider {
     }
 
     return data.content[0].text;
+  }
+
+  /**
+   * 使用流式传输进行翻译
+   */
+  async translateWithStream(content: string, config: TranslationConfig): Promise<string> {
+    const systemPrompt = config.systemPrompt || getDefaultSystemPrompt(config.targetLanguage);
+    const estimatedTokens = this.estimateTokens(buildUserPrompt(content, config.targetLanguage));
+
+    const requestBody = {
+      model: config.model,
+      max_tokens: config.maxTokens || 4096,
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: buildUserPrompt(content, config.targetLanguage)
+        }
+      ],
+      stream: true
+    };
+
+    const response = await fetch(this.baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Anthropic API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
+    }
+
+    // 读取流式响应
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body reader');
+    }
+
+    const decoder = new TextDecoder();
+    let result = '';
+    let currentTokens = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        // Anthropic 使用 event: 和 data: 格式
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (!data || data === '[DONE]') continue;
+
+          try {
+            const parsed = JSON.parse(data);
+
+            // 检查是否是内容增量事件
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              result += parsed.delta.text;
+              currentTokens++;
+
+              // 报告进度
+              if (config.onProgress) {
+                config.onProgress({
+                  current: currentTokens,
+                  total: estimatedTokens,
+                  content: result
+                });
+              }
+            }
+          } catch (e) {
+            // 忽略解析错误
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
   estimateTokens(text: string): number {

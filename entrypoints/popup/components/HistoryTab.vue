@@ -7,6 +7,7 @@ interface Props {
 
 interface Emits {
   (e: 'delete', id: string): void;
+  (e: 'retry', id: string): void;
 }
 
 const props = defineProps<Props>();
@@ -39,10 +40,16 @@ function formatDate(timestamp: number): string {
   }
 }
 
+function handleRetry(id: string) {
+  emit('retry', id);
+}
+
 const stats = computed(() => {
   const completed = props.history.filter(h => h.status === 'completed').length;
+  const failed = props.history.filter(h => h.status === 'failed').length;
+  const pending = props.history.filter(h => h.status === 'pending').length;
   const totalTokens = props.history.reduce((sum, h) => sum + (h.meta?.tokenCount || 0), 0);
-  return { completed, totalTokens, total: props.history.length };
+  return { completed, failed, pending, totalTokens, total: props.history.length };
 });
 </script>
 
@@ -53,6 +60,14 @@ const stats = computed(() => {
       <div class="stat-card">
         <div class="stat-value">{{ stats.completed }}</div>
         <div class="stat-label">已完成</div>
+      </div>
+      <div v-if="stats.pending > 0" class="stat-card stat-card-pending">
+        <div class="stat-value">{{ stats.pending }}</div>
+        <div class="stat-label">进行中</div>
+      </div>
+      <div v-if="stats.failed > 0" class="stat-card stat-card-failed">
+        <div class="stat-value">{{ stats.failed }}</div>
+        <div class="stat-label">失败</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">{{ (stats.totalTokens / 1000).toFixed(1) }}k</div>
@@ -91,6 +106,12 @@ const stats = computed(() => {
             <span class="history-date">{{ formatDate(item.meta.translatedAt) }}</span>
           </div>
           <div class="history-meta">
+            <span v-if="item.status === 'pending'" class="meta-badge meta-pending">
+              ⏳ 翻译中
+            </span>
+            <span v-else-if="item.status === 'failed'" class="meta-badge meta-error">
+              ❌ 失败
+            </span>
             <span class="meta-badge" :style="{ '--badge-color': getProviderInfo(item.meta.provider).color }">
               {{ getProviderInfo(item.meta.provider).icon }} {{ item.meta.model }}
             </span>
@@ -101,13 +122,35 @@ const stats = computed(() => {
               {{ (item.meta.duration / 1000).toFixed(1) }}s
             </span>
           </div>
+          <div v-if="item.status === 'failed' && item.error" class="error-message">
+            {{ item.error }}
+          </div>
+          <div v-else-if="item.status === 'pending'" class="pending-message">
+            <div class="pending-text">正在翻译中...</div>
+            <div v-if="item.meta.tokenCount > 0" class="token-progress">
+              已处理 ~{{ item.meta.tokenCount }} tokens
+            </div>
+          </div>
         </div>
-        <button class="btn-icon btn-delete" @click="emit('delete', item.id)" title="删除">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18"/>
-            <path d="M6 6l12 12"/>
-          </svg>
-        </button>
+        <div class="action-buttons">
+          <button
+            v-if="item.status === 'failed' || item.status === 'pending'"
+            class="btn-icon btn-retry"
+            @click="handleRetry(item.id)"
+            :title="item.status === 'pending' ? '重新开始' : '重试'"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+          </button>
+          <button class="btn-icon btn-delete" @click="emit('delete', item.id)" title="删除">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 6L6 18"/>
+              <path d="M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -121,7 +164,7 @@ const stats = computed(() => {
 /* History Tab */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -140,6 +183,14 @@ const stats = computed(() => {
   color: #667eea;
   line-height: 1;
   margin-bottom: 4px;
+}
+
+.stat-card-failed .stat-value {
+  color: #ef4444;
+}
+
+.stat-card-pending .stat-value {
+  color: #3b82f6;
 }
 
 .stat-label {
@@ -263,6 +314,52 @@ const stats = computed(() => {
   color: #6b7280;
 }
 
+.meta-pending {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.meta-error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.error-message {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #dc2626;
+  line-height: 1.4;
+}
+
+.pending-message {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #2563eb;
+  line-height: 1.4;
+}
+
+.pending-text {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.token-progress {
+  font-size: 10px;
+  opacity: 0.8;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+}
+
 /* Icon Button */
 .btn-icon {
   width: 32px;
@@ -285,5 +382,14 @@ const stats = computed(() => {
 .btn-delete:hover {
   background: #fef2f2;
   color: #ef4444;
+}
+
+.btn-retry {
+  color: #9ca3af;
+}
+
+.btn-retry:hover {
+  background: #eff6ff;
+  color: #3b82f6;
 }
 </style>

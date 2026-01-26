@@ -88,6 +88,30 @@ async function deleteTranslation(id: string) {
   }
 }
 
+async function retryTranslation(id: string) {
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'RETRY_TRANSLATION',
+      payload: { id }
+    });
+
+    if (response.success) {
+      showMessage('success', '✓ 开始重新翻译');
+      // 立即刷新显示 pending 状态
+      await loadHistory();
+      // 3秒后再刷新一次以显示最新状态
+      setTimeout(() => {
+        loadHistory();
+      }, 3000);
+    } else {
+      showMessage('error', '✕ 重试失败: ' + response.error);
+    }
+  } catch (error) {
+    console.error('Failed to retry translation:', error);
+    showMessage('error', '✕ 重试失败');
+  }
+}
+
 async function clearAll() {
   if (!confirm('确定要清空所有数据吗？此操作不可恢复！')) return;
 
@@ -150,6 +174,7 @@ function showMessage(type: 'success' | 'error', text: string) {
           key="history"
           :history="history"
           @delete="deleteTranslation"
+          @retry="retryTranslation"
         />
       </Transition>
     </main>
