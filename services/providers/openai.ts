@@ -11,12 +11,15 @@ export class OpenAIProvider implements TranslationProvider {
   readonly baseUrl = 'https://api.openai.com/v1/chat/completions';
 
   async translate(content: string, config: TranslationConfig): Promise<string> {
-    // 如果配置了进度回调，使用流式传输
-    if (config.onProgress) {
+    // 默认使用流式传输以便更新进度
+    const useStream = config.useStream !== false;
+
+    if (useStream) {
       return this.translateWithStream(content, config);
     }
 
     const systemPrompt = config.systemPrompt || getDefaultSystemPrompt(config.targetLanguage);
+    const apiUrl = config.apiEndpoint || this.baseUrl;
 
     const requestBody = {
       model: config.model,
@@ -34,7 +37,7 @@ export class OpenAIProvider implements TranslationProvider {
       max_tokens: config.maxTokens || 4096
     };
 
-    const response = await fetch(this.baseUrl, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,7 +65,12 @@ export class OpenAIProvider implements TranslationProvider {
    */
   async translateWithStream(content: string, config: TranslationConfig): Promise<string> {
     const systemPrompt = config.systemPrompt || getDefaultSystemPrompt(config.targetLanguage);
-    const estimatedTokens = this.estimateTokens(buildUserPrompt(content, config.targetLanguage));
+    const apiUrl = config.apiEndpoint || this.baseUrl;
+
+    // 用于追踪 token 更新的变量
+    let lastUpdateTime = 0;
+    const UPDATE_INTERVAL = 500; // 每 500ms 更新一次
+    let estimatedTokens = 0;
 
     const requestBody = {
       model: config.model,
@@ -81,7 +89,7 @@ export class OpenAIProvider implements TranslationProvider {
       stream: true
     };
 
-    const response = await fetch(this.baseUrl, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -103,7 +111,6 @@ export class OpenAIProvider implements TranslationProvider {
 
     const decoder = new TextDecoder();
     let result = '';
-    let currentTokens = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -122,15 +129,17 @@ export class OpenAIProvider implements TranslationProvider {
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
               result += content;
-              currentTokens++;
 
-              // 报告进度
-              if (config.onProgress) {
-                config.onProgress({
-                  current: currentTokens,
-                  total: estimatedTokens,
-                  content: result
-                });
+              // 估算当前 token 数量并定期更新
+              const now = Date.now();
+              if (now - lastUpdateTime > UPDATE_INTERVAL) {
+                estimatedTokens = this.estimateTokens(result);
+                lastUpdateTime = now;
+
+                // 调用更新回调
+                if (config.onTokenUpdate) {
+                  config.onTokenUpdate(estimatedTokens);
+                }
               }
             }
           } catch (e) {
@@ -138,6 +147,12 @@ export class OpenAIProvider implements TranslationProvider {
           }
         }
       }
+    }
+
+    // 最终更新一次，确保返回准确的 token 数
+    estimatedTokens = this.estimateTokens(result);
+    if (config.onTokenUpdate) {
+      config.onTokenUpdate(estimatedTokens);
     }
 
     return result;

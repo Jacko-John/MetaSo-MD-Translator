@@ -60,15 +60,36 @@ export interface TranslationEntry {
 }
 
 /**
+ * API 提供商配置
+ */
+export interface ProviderConfig {
+  id: string;                    // 唯一标识符 (如: 'openai', 'anthropic', 'custom-provider')
+  name: string;                  // 显示名称 (如: 'OpenAI', 'Anthropic', 'MyProvider')
+  type: 'openai' | 'anthropic' | 'custom';  // 提供商类型，决定 API 调用方式
+  apiEndpoint: string;           // API 端点
+  description?: string;          // 可选描述
+}
+
+/**
+ * 单个模型配置
+ */
+export interface ModelConfig {
+  id: string;                    // 唯一标识符 (如: 'gpt-4o', 'claude-3-5-sonnet')
+  name: string;                  // 显示名称 (如: 'GPT-4o', 'Claude 3.5 Sonnet')
+  providerId: string;            // 关联的提供商 ID
+  apiKey: string;                // 该模型的 API Key
+  description?: string;          // 可选描述
+}
+
+/**
  * 用户配置条目
  */
 export interface ConfigEntry {
   id: 'config'; // 固定主键
-  apiKey: string;
-  apiProvider: 'openai' | 'anthropic' | 'custom';
-  apiEndpoint?: string; // 自定义端点
-  model: string;
-  language: string; // 默认: 'zh-CN'
+  providers: ProviderConfig[];   // 提供商配置数组
+  models: ModelConfig[];         // 模型配置数组
+  selectedModelId: string;       // 当前选中的模型ID
+  language: string;              // 默认: 'zh-CN'
   createdAt: number;
   updatedAt: number;
 }
@@ -82,7 +103,6 @@ export type MessageType =
   | 'CHECK_TRANSLATION' // 检查翻译是否存在
   | 'REQUEST_TRANSLATION' // 请求翻译
   | 'TRANSLATION_READY' // 翻译完成通知
-  | 'TRANSLATION_PROGRESS' // 翻译进度更新
   | 'GET_TRANSLATION' // 获取翻译结果
   | 'SHOW_CONSENT_PROMPT' // 显示用户同意弹窗
   | 'USER_CONSENT_RESPONSE' // 用户同意响应
@@ -139,19 +159,6 @@ export interface TranslationReadyMessage extends BaseMessage {
   payload: {
     id: string;
     translation: TranslationEntry;
-  };
-}
-
-// 翻译进度更新
-export interface TranslationProgressMessage extends BaseMessage {
-  type: 'TRANSLATION_PROGRESS';
-  payload: {
-    id: string;
-    currentBatch: number;
-    totalBatches: number;
-    currentParagraph: number;
-    totalParagraphs: number;
-    translatedTokens: number;
   };
 }
 
@@ -236,7 +243,6 @@ export type Message =
   | CheckTranslationMessage
   | RequestTranslationMessage
   | TranslationReadyMessage
-  | TranslationProgressMessage
   | GetTranslationMessage
   | ShowConsentPromptMessage
   | UserConsentResponseMessage
@@ -272,11 +278,8 @@ export interface TranslationConfig {
   maxTokens?: number;
   temperature?: number;
   systemPrompt?: string;
-  onProgress?: (progress: {
-    current: number;
-    total: number;
-    content: string;
-  }) => void;
+  useStream?: boolean; // 是否使用流式传输
+  onTokenUpdate?: (tokenCount: number) => void; // token 更新回调（用于更新 IndexedDB）
 }
 
 /**

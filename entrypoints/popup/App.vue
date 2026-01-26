@@ -28,9 +28,9 @@ const hasPendingTranslations = computed(() => {
 });
 
 onMounted(() => {
+  console.log('[App] Mounted, loading config and history...');
   loadConfig();
   loadHistory();
-  setupMessageListener();
   startAutoRefresh();
 });
 
@@ -46,20 +46,6 @@ watch(hasPendingTranslations, (hasPending) => {
     stopAutoRefresh();
   }
 });
-
-// 设置消息监听，接收实时进度更新
-function setupMessageListener() {
-  browser.runtime.onMessage.addListener((message: any) => {
-    if (message.type === 'TRANSLATION_PROGRESS') {
-      // 更新对应翻译的 token 数量
-      const { id, translatedTokens } = message.payload;
-      const index = history.value.findIndex(h => h.id === id);
-      if (index !== -1) {
-        history.value[index].meta.tokenCount = translatedTokens;
-      }
-    }
-  });
-}
 
 // 启动自动刷新
 function startAutoRefresh() {
@@ -112,6 +98,8 @@ async function saveConfig() {
     });
 
     if (response.success) {
+      // 更新本地配置为保存后的配置
+      config.value = response.data;
       showMessage('success', '✓ 配置已保存');
     } else {
       showMessage('error', '✕ 保存失败: ' + response.error);
