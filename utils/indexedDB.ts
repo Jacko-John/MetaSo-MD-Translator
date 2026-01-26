@@ -401,11 +401,16 @@ export class IndexedDBManager {
       const translationsRequest = transaction.objectStore('translations').count();
       const configRequest = transaction.objectStore('config').count();
 
+      // 使用 status index 统计已完成的翻译数量
+      const translationsStore = transaction.objectStore('translations');
+      const statusIndex = translationsStore.index('status');
+      const completedRequest = statusIndex.count('completed');
+
       transaction.oncomplete = () => {
         resolve({
           contentsCount: contentsRequest.result,
           translationsCount: translationsRequest.result,
-          completedTranslations: 0, // TODO: 可以通过 index 统计
+          completedTranslations: completedRequest.result,
           hasConfig: configRequest.result > 0
         });
       };

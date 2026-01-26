@@ -168,12 +168,18 @@ export default defineBackground(() => {
 
     await indexedDB.setContent(contentEntry);
 
-    // 2. 检查是否已有翻译
+    // 2. 检查是否已有翻译（已完成或正在翻译中都不需要重复提示）
     const existingTranslation = await indexedDB.getTranslation(payload.id);
 
-    if (existingTranslation && existingTranslation.status === 'completed') {
-      console.log('[Background] 翻译已存在');
-      return { success: true, data: { needTranslation: false } };
+    if (existingTranslation) {
+      if (existingTranslation.status === 'completed') {
+        console.log('[Background] 翻译已完成，无需重复翻译');
+        return { success: true, data: { needTranslation: false } };
+      } else if (existingTranslation.status === 'pending') {
+        console.log('[Background] 翻译正在进行中，无需重复提示');
+        return { success: true, data: { needTranslation: false } };
+      }
+      // failed 状态会继续，允许用户重试
     }
 
     // 3. 估算 Token 数量
@@ -259,7 +265,25 @@ export default defineBackground(() => {
       return { success: true, data: existingTranslation };
     }
 
-    // 2.5. 创建 pending 记录（确保即使中途失败也能在历史记录中看到）
+    // 2.5. 估算 token 数量
+    let estimatedTokens = 0;
+    try {
+      const data = payload.content.data;
+      if (data && Array.isArray(data.markdown)) {
+        const allMarkdown: string[] = [];
+        data.markdown.forEach((item) => {
+          if (item.markdown && Array.isArray(item.markdown)) {
+            allMarkdown.push(...item.markdown);
+          }
+        });
+        const markdown = allMarkdown.join('\n');
+        estimatedTokens = estimateTokens(markdown);
+      }
+    } catch (error) {
+      console.warn('[Background] 无法估算 token 数量:', error);
+    }
+
+    // 2.6. 创建 pending 记录（确保即使中途失败也能在历史记录中看到）
     await indexedDB.setTranslation({
       id: payload.id,
       contentId: payload.id,
@@ -276,6 +300,7 @@ export default defineBackground(() => {
         model: config.model,
         provider: config.apiProvider,
         tokenCount: 0,
+        estimatedTokenCount: estimatedTokens,
         duration: 0
       },
       status: 'pending'
@@ -340,7 +365,7 @@ export default defineBackground(() => {
           model: config.model,
           targetLanguage: config.language,
           maxTokens: 8192,
-          temperature: 0.3,
+          temperature: 0.07,
           onProgress: (progress) => {
             const now = Date.now();
             const newTokenCount = totalTokens + progress.current;
@@ -607,27 +632,37 @@ export default defineBackground(() => {
   /**
    * 通知 content script 翻译完成
    */
-  function notifyTranslationReady(tabId: number | undefined, id: string, translation: TranslationEntry) {
+  async function notifyTranslationReady(tabId: number | undefined, id: string, translation: TranslationEntry) {
     if (!tabId) {
-      console.warn('[Background] No tab ID, cannot notify');
+      console.warn('[Background] No tab ID, cannot notify translation ready');
       return;
     }
 
-    browser.tabs.sendMessage(tabId, {
-      type: 'TRANSLATION_READY',
-      payload: {
-        id,
-        translation
+    try {
+      // 检查 tab 是否仍然存在
+      const tab = await browser.tabs.get(tabId).catch(() => null);
+      if (!tab) {
+        console.warn('[Background] Tab no longer exists, cannot notify translation ready');
+        return;
       }
-    }).catch(error => {
-      console.error('[Background] Failed to send translation ready message:', error);
-    });
+
+      await browser.tabs.sendMessage(tabId, {
+        type: 'TRANSLATION_READY',
+        payload: {
+          id,
+          translation
+        }
+      });
+    } catch (error) {
+      // 静默处理错误 - tab 可能已关闭
+      console.debug('[Background] Failed to send translation ready message (tab may be closed):', error);
+    }
   }
 
   /**
    * 通知翻译进度
    */
-  function notifyTranslationProgress(
+  async function notifyTranslationProgress(
     tabId: number | undefined,
     id: string,
     progress: {
@@ -639,19 +674,29 @@ export default defineBackground(() => {
     }
   ) {
     if (!tabId) {
-      console.warn('[Background] No tab ID, cannot notify progress');
+      console.debug('[Background] No tab ID, cannot notify progress');
       return;
     }
 
-    browser.tabs.sendMessage(tabId, {
-      type: 'TRANSLATION_PROGRESS',
-      payload: {
-        id,
-        ...progress
+    try {
+      // 检查 tab 是否仍然存在
+      const tab = await browser.tabs.get(tabId).catch(() => null);
+      if (!tab) {
+        console.debug('[Background] Tab no longer exists, skipping progress notification');
+        return;
       }
-    }).catch(error => {
-      console.error('[Background] Failed to send progress message:', error);
-    });
+
+      await browser.tabs.sendMessage(tabId, {
+        type: 'TRANSLATION_PROGRESS',
+        payload: {
+          id,
+          ...progress
+        }
+      });
+    } catch (error) {
+      // 静默处理错误 - tab 可能已关闭或content script未准备好
+      console.debug('[Background] Failed to send progress message (tab may be closed):', error);
+    }
   }
 
   /**

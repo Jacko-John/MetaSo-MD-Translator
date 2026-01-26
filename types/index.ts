@@ -52,6 +52,7 @@ export interface TranslationEntry {
     model: string;
     provider: 'openai' | 'anthropic' | 'custom';
     tokenCount: number;
+    estimatedTokenCount?: number; // 估算的总 token 数量
     duration: number;
   };
   status: 'pending' | 'completed' | 'failed';

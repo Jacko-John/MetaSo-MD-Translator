@@ -41,7 +41,7 @@ export default defineContentScript({
     // ========================================================================
     // 监听 background 消息
     // ========================================================================
-    browser.runtime.onMessage.addListener((message: Message, sender: any, sendResponse: (response: any) => void) => {
+    browser.runtime.onMessage.addListener((message: Message, _sender: any, sendResponse: (response: any) => void) => {
       handleMessage(message)
         .then(sendResponse)
         .catch((error) => {
@@ -157,10 +157,10 @@ export default defineContentScript({
 
         browser.runtime.sendMessage(message, handleResponse);
 
-        // 设置超时（5秒）
-        setTimeout(() => {
-          resolve({ success: false, error: 'Request timeout - no response from background' });
-        }, 5000);
+        // // 设置超时（60秒）- 翻译可能需要较长时间
+        // setTimeout(() => {
+        //   resolve({ success: false, error: 'Request timeout - no response from background' });
+        // }, 60000);
       });
     }
 
@@ -326,8 +326,8 @@ export default defineContentScript({
           ` : ''}
 
           <div class="actions">
-            <button class="btn-cancel" id="metaso-btn-cancel">取消</button>
-            <button class="btn-approve" id="metaso-btn-approve">同意翻译</button>
+            <button class="btn-cancel" id="metaso-translation-btn-cancel">取消</button>
+            <button class="btn-approve" id="metaso-translation-btn-approve">同意翻译</button>
           </div>
         </div>
       `;
@@ -335,8 +335,8 @@ export default defineContentScript({
       document.body.appendChild(consentModalContainer);
 
       // 绑定按钮事件
-      const cancelBtn = document.getElementById('metaso-btn-cancel');
-      const approveBtn = document.getElementById('metaso-btn-approve');
+      const cancelBtn = document.getElementById('metaso-translation-btn-cancel');
+      const approveBtn = document.getElementById('metaso-translation-btn-approve');
 
       cancelBtn?.addEventListener('click', () => {
         console.log('[MetaSo Translator] 用户取消翻译');
