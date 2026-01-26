@@ -21,13 +21,20 @@ export function getDefaultSystemPrompt(targetLanguage?: string): string {
 
   return `You are a professional technical document translator. Translate the given Markdown content into ${target}.
 
-Critical Requirements:
-1. **Faithfulness**: Preserve the exact original meaning and intent without any additions, deletions, or interpretations
-2. **Naturalness**: Use expressions and phrasing that are natural and idiomatic in ${target}, while maintaining the original technical accuracy
+CRITICAL MARKER PRESERVATION RULES:
+1. The content may include HTML comment markers like <!-- META_SO_PARA_N -->
+2. You MUST preserve ALL markers exactly - never delete, modify, translate, or reorder them
+3. Only translate the actual content BETWEEN the marker pairs
+4. Each paragraph is wrapped with identical start/end markers (e.g., <!-- META_SO_PARA_0 --> content <!-- META_SO_PARA_0 -->)
+5. These markers are critical for paragraph alignment - translation will fail if markers are missing or altered
+
+Translation Quality Requirements:
+1. **Faithfulness**: Preserve the exact original meaning and intent without additions, deletions, or interpretations
+2. **Naturalness**: Use expressions and phrasing that are natural and idiomatic in ${target}, while maintaining technical accuracy
 3. **Markdown Integrity**: Preserve ALL Markdown formatting exactly as is (headings, lists, code blocks, links, tables, etc.)
 4. **Technical Accuracy**: Keep technical terms and API names consistent with their original form when appropriate
 5. **Code Preservation**: NEVER translate text within code blocks or code fences
-6. **Conciseness**: Return ONLY the translated content, with no explanations, notes, or commentary`;
+6. **Conciseness**: Return ONLY the translated content with ALL markers intact, no explanations or commentary`;
 }
 
 /**
@@ -49,13 +56,31 @@ export function buildUserPrompt(content: string, targetLanguage: string): string
 ${content}
 \`\`\`
 
-Requirements:
-1. Maintain ALL Markdown formatting precisely (headings, lists, code blocks, links, tables, etc.)
-2. Use natural ${target} expressions that would be used by native speakers, while strictly preserving the original meaning
-3. Keep technical terminology and API names intact unless they have well-established ${target} equivalents
-4. NEVER translate text within code blocks or inline code
-5. Preserve the original tone, style, and structure
-6. Return ONLY the translated Markdown content, with no additional explanations`;
+CRITICAL INSTRUCTIONS - YOU MUST FOLLOW THESE EXACTLY:
+
+1. **PRESERVE ALL MARKERS**: The content contains special markers like \`<!-- META_SO_PARA_0 -->\`. You MUST:
+   - Keep ALL markers exactly as they appear in the original
+   - NEVER delete, modify, or translate these markers
+   - Ensure each marker appears in your translation
+   - Keep markers in the same order as the original
+
+2. **TRANSLATE CONTENT BETWEEN MARKERS**: Only translate the actual text content BETWEEN the markers, not the markers themselves
+
+3. **MAINTAIN MARKER STRUCTURE**: Each paragraph is wrapped with a pair of identical markers. For example:
+   <!-- META_SO_PARA_0 -->
+   [Translate this text]
+   <!-- META_SO_PARA_0 -->
+
+4. **MARKER PURPOSE**: These markers ensure proper paragraph alignment. If markers are missing, the translation will fail
+
+5. **FORMAT REQUIREMENTS**:
+   - Maintain ALL Markdown formatting precisely (headings, lists, code blocks, links, tables, etc.)
+   - Use natural ${target} expressions that would be used by native speakers
+   - Keep technical terminology and API names intact unless they have well-established ${target} equivalents
+   - NEVER translate text within code blocks or inline code
+   - Preserve the original tone, style, and structure
+
+6. **OUTPUT**: Return ONLY the translated Markdown content with ALL markers intact, no additional explanations`;
 }
 
 /**

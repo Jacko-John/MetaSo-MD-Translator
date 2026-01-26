@@ -18,6 +18,8 @@ import {
   saveFailedTranslation
 } from '../utils/translationHelpers';
 import { notifyTranslationReady } from '../utils/notification';
+import { injectMarkers, extractTranslatedParagraphs } from '../utils/markerUtils';
+import { applyFallbackStrategy } from '../utils/alignmentFallback';
 
 /**
  * 处理原始请求
@@ -221,7 +223,15 @@ async function performTranslation(
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
-    const batchText = batch.map(p => p.text.trim()).join('\n\n');
+
+    // 特殊处理：单段落批次不需要标记
+    let batchText: string;
+    if (batch.length === 1) {
+      batchText = batch[0].text.trim();
+    } else {
+      // 多段落批次：注入标记
+      batchText = injectMarkers(batch);
+    }
 
     const batchStart = batch[0];
     const batchEnd = batch[batch.length - 1];
@@ -262,13 +272,31 @@ async function performTranslation(
       throw new Error(`批次 ${batchIndex + 1} 翻译失败: ${translationResult.error || '未知错误'}`);
     }
 
-    const translatedLines = translationResult.content.split('\n').map(s => s.trim()).filter(s => s);
+    // 特殊处理：单段落批次直接使用整个翻译结果
+    if (batch.length === 1) {
+      const key = `${batch[0].itemIndex}-${batch[0].paragraphIndex}`;
+      translatedParagraphs.set(key, translationResult.content.trim() + '\n\n');
+    } else {
+      // 多段落批次：提取标记并进行回退处理
+      const extractionResult = extractTranslatedParagraphs(
+        translationResult.content,
+        batch.length
+      );
 
-    batch.forEach((para, index) => {
-      const key = `${para.itemIndex}-${para.paragraphIndex}`;
-      const translatedText = translatedLines[index] || para.text;
-      translatedParagraphs.set(key, translatedText.trim() + '\n\n');
-    });
+      // 应用回退策略
+      const fallbackResult = applyFallbackStrategy(
+        extractionResult,
+        batch,
+        translationResult.content
+      );
+
+      // 使用回退结果
+      batch.forEach((para, index) => {
+        const key = `${para.itemIndex}-${para.paragraphIndex}`;
+        const translatedText = fallbackResult.paragraphs[index] || para.text;
+        translatedParagraphs.set(key, translatedText.trim() + '\n\n');
+      });
+    }
 
     // 使用翻译结果中的 token 计数（如果有）
     const batchTokenCount = translationResult.meta?.tokenCount || currentBatchTokens;

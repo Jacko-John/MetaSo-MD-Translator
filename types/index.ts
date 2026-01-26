@@ -308,6 +308,51 @@ export interface TranslationProvider {
 }
 
 // ============================================================================
+// Paragraph Alignment Types
+// ============================================================================
+
+/**
+ * 标记提取结果
+ */
+export interface MarkerExtractionResult {
+  /** 提取的翻译段落 */
+  paragraphs: string[];
+  /** 缺失的标记索引 */
+  missingMarkers: number[];
+  /** 重复的标记索引 */
+  duplicateMarkers: number[];
+  /** 找到的所有标记索引 */
+  foundMarkers: Set<number>;
+}
+
+/**
+ * 回退级别枚举
+ */
+export enum FallbackLevel {
+  PERFECT = 'perfect',           // 所有标记完整
+  MINOR_ISSUES = 'minor',        // 少量标记缺失（< 10%）
+  MODERATE_ISSUES = 'moderate',  // 中等标记缺失（10-30%）
+  SEVERE_ISSUES = 'severe',      // 严重标记缺失（> 30%）
+  COMPLETE_FAILURE = 'failure'   // 所有标记缺失
+}
+
+/**
+ * 回退结果
+ */
+export interface FallbackResult {
+  /** 应用的回退级别 */
+  level: FallbackLevel;
+  /** 最终的段落数组 */
+  paragraphs: string[];
+  /** 缺失的标记数量 */
+  missingCount: number;
+  /** 总标记数量 */
+  totalCount: number;
+  /** 应用的策略描述 */
+  appliedStrategy: string;
+}
+
+// ============================================================================
 // URL Parser Types
 // ============================================================================
 
