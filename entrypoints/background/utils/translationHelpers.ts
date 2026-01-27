@@ -1,5 +1,5 @@
 import { indexedDB } from '@/utils/indexedDB';
-import type { TranslationEntry, ConfigEntry } from '@/types';
+import type { TranslationEntry, ConfigEntry, TranslationBatchProgress } from '@/types';
 import { getSelectedModel, getProviderForModel, getModelIdForTranslation } from './configHelpers';
 
 /**
@@ -75,7 +75,8 @@ export async function updatePendingTranslation(
 export async function saveFailedTranslation(
   id: string,
   config: ConfigEntry,
-  error: unknown
+  error: unknown,
+  batchProgress?: TranslationBatchProgress
 ): Promise<void> {
   console.error('[Background] 翻译失败:', error);
 
@@ -97,10 +98,46 @@ export async function saveFailedTranslation(
       translatedAt: Date.now(),
       model: selectedModel?.id || getModelIdForTranslation(config),
       provider: provider?.type || 'openai',
-      tokenCount: 0,
-      duration: 0
+      tokenCount: batchProgress?.totalTokens || 0,
+      duration: 0,
+      batchProgress
     },
     status: 'failed',
     error: error instanceof Error ? error.message : 'Unknown error'
   });
+}
+
+/**
+ * 保存批次进度（用于断点续传）
+ */
+export async function saveBatchProgress(
+  id: string,
+  config: ConfigEntry,
+  batchProgress: TranslationBatchProgress
+): Promise<void> {
+  const selectedModel = getSelectedModel(config);
+  const provider = selectedModel ? getProviderForModel(config, selectedModel) : null;
+
+  await indexedDB.setTranslation({
+    id,
+    contentId: id,
+    translatedContent: {
+      errCode: 0,
+      errMsg: 'Translation in progress',
+      data: {
+        lang: null,
+        markdown: []
+      }
+    },
+    meta: {
+      translatedAt: Date.now(),
+      model: selectedModel?.id || getModelIdForTranslation(config),
+      provider: provider?.type || 'openai',
+      tokenCount: batchProgress.totalTokens,
+      estimatedTokenCount: 0,
+      duration: 0,
+      batchProgress
+    },
+    status: 'pending'
+  }).catch(console.error);
 }

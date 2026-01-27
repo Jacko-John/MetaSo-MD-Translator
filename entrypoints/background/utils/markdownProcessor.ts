@@ -12,7 +12,40 @@ export function estimateTokens(text: string): number {
 }
 
 /**
+ * 判断是否为空段落
+ * 空段落包括：空字符串、纯空白字符、只包含换行符的段落
+ */
+export function isEmptyParagraph(text: string): boolean {
+  if (!text) return true;
+  const trimmed = text.trim();
+  return trimmed.length === 0;
+}
+
+/**
+ * 清理 MetaSo API 响应中的空段落
+ * 返回清理后的响应副本
+ */
+export function cleanEmptyParagraphs(content: MetaSoApiResponse): MetaSoApiResponse {
+  const cleaned = { ...content };
+
+  if (cleaned.data && Array.isArray(cleaned.data.markdown)) {
+    cleaned.data = {
+      ...cleaned.data,
+      markdown: cleaned.data.markdown.map(item => ({
+        ...item,
+        markdown: Array.isArray(item.markdown)
+          ? item.markdown.filter(p => !isEmptyParagraph(p))
+          : item.markdown
+      }))
+    };
+  }
+
+  return cleaned;
+}
+
+/**
  * 从 MetaSo API 响应中提取 markdown 文本
+ * 自动过滤空段落
  */
 export function extractMarkdownText(content: MetaSoApiResponse): MarkdownExtractionResult {
   try {
@@ -22,7 +55,9 @@ export function extractMarkdownText(content: MetaSoApiResponse): MarkdownExtract
       const allMarkdown: string[] = [];
       data.markdown.forEach((item) => {
         if (item.markdown && Array.isArray(item.markdown)) {
-          allMarkdown.push(...item.markdown);
+          // 过滤空段落
+          const nonEmptyParagraphs = item.markdown.filter(p => !isEmptyParagraph(p));
+          allMarkdown.push(...nonEmptyParagraphs);
         }
       });
       const text = allMarkdown.join('\n');
@@ -37,6 +72,7 @@ export function extractMarkdownText(content: MetaSoApiResponse): MarkdownExtract
 
 /**
  * 将 markdown 项展平为段落列表
+ * 自动过滤空段落
  */
 export function flattenMarkdownItems(items: MetaSoMarkdownItem[]): ParagraphInfo[] {
   const paragraphs: ParagraphInfo[] = [];
@@ -44,12 +80,15 @@ export function flattenMarkdownItems(items: MetaSoMarkdownItem[]): ParagraphInfo
   items.forEach((item, itemIndex) => {
     if (item.markdown && Array.isArray(item.markdown)) {
       item.markdown.forEach((paragraph, paragraphIndex) => {
-        paragraphs.push({
-          text: paragraph,
-          itemIndex,
-          paragraphIndex,
-          estimatedTokens: estimateTokens(paragraph)
-        });
+        // 过滤空段落
+        if (!isEmptyParagraph(paragraph)) {
+          paragraphs.push({
+            text: paragraph,
+            itemIndex,
+            paragraphIndex,
+            estimatedTokens: estimateTokens(paragraph)
+          });
+        }
       });
     }
   });
@@ -99,18 +138,30 @@ export function batchParagraphs(paragraphs: ParagraphInfo[], maxTokens: number):
 
 /**
  * 组装翻译后的内容
+ * 注意：原始内容已经清理过空段落，所以这里直接使用
  */
 export function assembleTranslatedContent(
   originalItems: MetaSoMarkdownItem[],
   translatedParagraphs: Map<string, string>
 ): MetaSoMarkdownItem[] {
-  return originalItems.map((item, itemIndex) => ({
-    markdown_lang: item.markdown.map((_, paragraphIndex) => {
+  return originalItems.map((item, itemIndex) => {
+    const translatedMarkdown: string[] = [];
+
+    item.markdown.forEach((_, paragraphIndex) => {
       const key = `${itemIndex}-${paragraphIndex}`;
-      return translatedParagraphs.get(key) || '';
-    }),
-    markdown: item.markdown,
-    page: item.page,
-    could_translate: true
-  }));
+      const translatedText = translatedParagraphs.get(key);
+
+      // 只有当翻译文本存在且不为空时才添加
+      if (translatedText && !isEmptyParagraph(translatedText)) {
+        translatedMarkdown.push(translatedText);
+      }
+    });
+
+    return {
+      markdown_lang: translatedMarkdown,
+      markdown: item.markdown,
+      page: item.page,
+      could_translate: true
+    };
+  });
 }

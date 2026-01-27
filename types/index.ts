@@ -41,6 +41,20 @@ export interface ContentEntry {
 }
 
 /**
+ * 翻译批次进度信息
+ */
+export interface TranslationBatchProgress {
+  /** 已完成的批次数 */
+  completedBatchCount: number;
+  /** 总批次数 */
+  totalBatchCount: number;
+  /** 已翻译的段落映射（key: "itemIndex-paragraphIndex", value: 翻译文本） */
+  translatedParagraphs: Record<string, string>;
+  /** 已消耗的 token 数 */
+  totalTokens: number;
+}
+
+/**
  * 翻译结果条目
  */
 export interface TranslationEntry {
@@ -54,6 +68,8 @@ export interface TranslationEntry {
     tokenCount: number;
     estimatedTokenCount?: number; // 估算的总 token 数量
     duration: number;
+    /** 批次进度信息（用于断点续传） */
+    batchProgress?: TranslationBatchProgress;
   };
   status: 'pending' | 'completed' | 'failed';
   error?: string;

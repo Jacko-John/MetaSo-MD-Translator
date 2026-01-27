@@ -52,14 +52,14 @@ export function parseMetaSoUrl(url: string): ParsedMetaSoUrl | null {
 /**
  * 从 URL 生成内容 ID
  * @param url - MetaSo API URL
- * @returns 内容 ID (fileId-pageId)
+ * @returns 内容 ID (fileId)
  */
 export function generateContentId(url: string): string | null {
   const parsed = parseMetaSoUrl(url);
   if (!parsed) {
     return null;
   }
-  return `${parsed.fileId}-${parsed.pageId}`;
+  return parsed.fileId;
 }
 
 /**

@@ -126,6 +126,7 @@ function fillMissingWithOriginal(
   missingMarkers.forEach(index => {
     if (originalBatch[index]) {
       result[index] = originalBatch[index].text;
+      console.log(`[Background] 段落 ${index}: ${result[index]}`);
       console.warn(`[Background] 段落 ${index}: using original text as fallback`);
     }
   });

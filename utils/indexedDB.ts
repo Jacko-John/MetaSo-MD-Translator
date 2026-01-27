@@ -9,7 +9,7 @@ import type {
 } from '@/types';
 
 const DB_NAME = 'MetaSoTranslator';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 /**
  * 获取全局 indexedDB 对象

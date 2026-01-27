@@ -46,11 +46,13 @@ interface WindowMessageEvent extends MessageEvent {
 interface State {
   translationCache: Map<string, MetaSoApiResponse>;
   pendingTranslations: Map<string, Promise<TranslationEntry>>;
+  isExtensionContextValid: boolean;
 }
 
 const state: State = {
   translationCache: new Map(),
   pendingTranslations: new Map(),
+  isExtensionContextValid: true,
 };
 
 export default defineUnlistedScript(() => {
@@ -68,8 +70,22 @@ export default defineUnlistedScript(() => {
     });
   }
 
-  function postMessage(type: MessagePayloadType, payload?: PostedMessagePayload): void {
-    window.postMessage({ type, payload }, '*');
+  function postMessage(type: MessagePayloadType, payload?: PostedMessagePayload): boolean {
+    try {
+      window.postMessage({ type, payload }, '*');
+      return true;
+    } catch (error) {
+      console.error('[MetaSo Translator] PostMessage failed:', error);
+      state.isExtensionContextValid = false;
+      return false;
+    }
+  }
+
+  /**
+   * 检查扩展上下文是否有效
+   */
+  function isContextValid(): boolean {
+    return state.isExtensionContextValid;
   }
 
   function getCachedTranslation(id: string): MetaSoApiResponse | undefined {
@@ -135,6 +151,10 @@ export default defineUnlistedScript(() => {
     pageId: string,
     content: MetaSoApiResponse
   ): void {
+    if (!isContextValid()) {
+      console.warn('[MetaSo Translator] Extension context invalidated, skipping original request handling');
+      return;
+    }
     postMessage(MESSAGE_TYPES.ORIGINAL_REQUEST, { id, url, fileId, pageId, content });
   }
 
@@ -142,6 +162,11 @@ export default defineUnlistedScript(() => {
   // 处理翻译请求（通用逻辑）
   // ============================================================================
   async function handleTranslationRequest(id: string): Promise<MetaSoApiResponse> {
+    if (!isContextValid()) {
+      console.warn('[MetaSo Translator] Extension context invalidated, cannot process translation request');
+      throw new Error('Extension context invalidated. Please refresh the page to use translation features.');
+    }
+
     const cached = getCachedTranslation(id);
     if (cached) {
       return cached;
@@ -186,6 +211,13 @@ export default defineUnlistedScript(() => {
       return createJsonResponse(translatedContent);
     } catch (error) {
       console.error('[MetaSo Translator] Fetch 翻译失败:', error);
+
+      // 如果是扩展上下文失效的错误，给出友好提示
+      if (error instanceof Error && error.message.includes('Extension context invalidated')) {
+        console.warn('[MetaSo Translator] Extension was reloaded. Please refresh this page to re-enable translation.');
+      }
+
+      // 回退到原始请求
       return originalFetch.apply(this, args);
     }
   };
@@ -268,6 +300,11 @@ export default defineUnlistedScript(() => {
         })
         .catch(error => {
           console.error('[MetaSo Translator] XHR 翻译失败:', error);
+
+          // 如果是扩展上下文失效的错误，给出友好提示
+          if (error instanceof Error && error.message.includes('Extension context invalidated')) {
+            console.warn('[MetaSo Translator] Extension was reloaded. Please refresh this page to re-enable translation.');
+          }
         });
 
       (OriginalXHR.prototype.send as XHRSendMethod).call(this, body);
