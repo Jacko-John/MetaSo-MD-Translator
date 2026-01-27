@@ -44,24 +44,6 @@ function handleRetry(id: string) {
   emit('retry', id);
 }
 
-// 计算进度百分比
-function getProgressPercentage(item: TranslationEntry): number {
-  const currentTokens = item.meta?.tokenCount || 0;
-  const estimatedTotal = item.meta?.estimatedTokenCount || 0;
-
-  if (currentTokens === 0) return 0;
-  if (estimatedTotal > 0) {
-    // 如果有明确的估算值，使用它
-    const percentage = (currentTokens / estimatedTotal) * 100;
-    return Math.min(Math.max(percentage, 5), 95);
-  }
-
-  // 否则使用简单估算：当前数量的 1.5 倍，或最少 1000
-  const fallbackEstimated = Math.max(currentTokens * 1.5, 1000);
-  const percentage = (currentTokens / fallbackEstimated) * 100;
-  return Math.min(Math.max(percentage, 5), 95);
-}
-
 const stats = computed(() => {
   const completed = props.history.filter(h => h.status === 'completed').length;
   const failed = props.history.filter(h => h.status === 'failed').length;
@@ -142,25 +124,6 @@ const stats = computed(() => {
           </div>
           <div v-if="item.status === 'failed' && item.error" class="error-message">
             {{ item.error }}
-          </div>
-          <div v-else-if="item.status === 'pending'" class="pending-message">
-            <div class="pending-text">正在翻译中...</div>
-            <div v-if="item.meta.tokenCount > 0" class="token-progress">
-              已处理 ~{{ item.meta.tokenCount }} tokens
-            </div>
-            <!-- 进度条 -->
-            <div v-if="item.meta.tokenCount > 0" class="progress-bar-container">
-              <div class="progress-bar">
-                <div
-                  class="progress-bar-fill"
-                  :style="{
-                    width: getProgressPercentage(item) + '%',
-                    animation: 'pulse 2s ease-in-out infinite'
-                  }"
-                ></div>
-              </div>
-              <span class="progress-text">{{ getProgressPercentage(item).toFixed(0) }}%</span>
-            </div>
           </div>
         </div>
         <div class="action-buttons">
@@ -363,67 +326,6 @@ const stats = computed(() => {
   font-size: 11px;
   color: #dc2626;
   line-height: 1.4;
-}
-
-.pending-message {
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: #eff6ff;
-  border-radius: 6px;
-  font-size: 11px;
-  color: #2563eb;
-  line-height: 1.4;
-}
-
-.pending-text {
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.token-progress {
-  font-size: 10px;
-  opacity: 0.8;
-  font-family: 'Monaco', 'Menlo', monospace;
-}
-
-/* Progress Bar */
-.progress-bar-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.progress-bar {
-  flex: 1;
-  height: 6px;
-  background: #dbeafe;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-.progress-text {
-  font-size: 10px;
-  font-weight: 600;
-  color: #2563eb;
-  min-width: 35px;
-  text-align: right;
 }
 
 .action-buttons {
