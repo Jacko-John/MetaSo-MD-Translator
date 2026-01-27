@@ -128,6 +128,8 @@ export type MessageType =
   | 'DELETE_TRANSLATION' // 删除翻译记录
   | 'RETRY_TRANSLATION' // 重试失败的翻译
   | 'CLEAR_ALL' // 清空所有数据
+  | 'EXPORT_HISTORY' // 导出历史记录
+  | 'IMPORT_HISTORY' // 导入历史记录
   | 'ERROR' // 错误消息
   ;
 
@@ -243,6 +245,17 @@ export interface ClearAllMessage extends BaseMessage {
   type: 'CLEAR_ALL';
 }
 
+// 导出历史记录
+export interface ExportHistoryMessage extends BaseMessage {
+  type: 'EXPORT_HISTORY';
+}
+
+// 导入历史记录
+export interface ImportHistoryMessage extends BaseMessage {
+  type: 'IMPORT_HISTORY';
+  payload: ExportData;
+}
+
 // 错误消息
 export interface ErrorMessage extends BaseMessage {
   type: 'ERROR';
@@ -268,6 +281,8 @@ export type Message =
   | DeleteTranslationMessage
   | RetryTranslationMessage
   | ClearAllMessage
+  | ExportHistoryMessage
+  | ImportHistoryMessage
   | ErrorMessage
   ;
 
@@ -456,3 +471,23 @@ export const IndexNames = {
   TRANSLATIONS_STATUS: 'status',
   TRANSLATIONS_TRANSLATED_AT: 'translatedAt'
 } as const;
+
+// ============================================================================
+// Import/Export Types
+// ============================================================================
+
+/**
+ * 导出数据格式
+ */
+export interface ExportData {
+  version: string;           // 数据格式版本 "1.0.0"
+  exportDate: number;        // 导出时间戳
+  exportDateFormatted: string; // 格式化的导出时间
+  stats: {
+    total: number;           // 总记录数
+    completed: number;       // 已完成数量
+    failed: number;          // 失败数量
+    pending: number;         // 进行中数量
+  };
+  translations: TranslationEntry[];  // 翻译记录数组
+}

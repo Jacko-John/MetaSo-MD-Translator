@@ -8,10 +8,15 @@ interface Props {
 interface Emits {
   (e: 'delete', id: string): void;
   (e: 'retry', id: string): void;
+  (e: 'refresh'): void;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
+
+const exporting = ref(false);
+const importing = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 const providerOptions = [
   { value: 'openai', label: 'OpenAI', icon: '🤖', color: '#10a37f' },
@@ -44,6 +49,95 @@ function handleRetry(id: string) {
   emit('retry', id);
 }
 
+// 下载 JSON 文件
+function downloadJsonFile(data: any, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: 'application/json;charset=utf-8'
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// 格式化文件名
+function getExportFilename(): string {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  return `metaso-translations-${year}${month}${day}-${hours}${minutes}${seconds}.json`;
+}
+
+// 处理导出
+async function handleExport() {
+  exporting.value = true;
+  try {
+    const response = await browser.runtime.sendMessage({
+      type: 'EXPORT_HISTORY'
+    });
+
+    if (response.success) {
+      downloadJsonFile(response.data, getExportFilename());
+      console.log(`✓ 已导出 ${response.data.translations.length} 条记录`);
+    } else {
+      console.error('✕ 导出失败:', response.error);
+    }
+  } catch (error) {
+    console.error('Export error:', error);
+  } finally {
+    exporting.value = false;
+  }
+}
+
+// 处理导入按钮点击
+function handleImport() {
+  fileInput.value?.click();
+}
+
+// 处理文件选择
+async function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  // 重置 input 以允许再次选择同一文件
+  target.value = '';
+
+  importing.value = true;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    const response = await browser.runtime.sendMessage({
+      type: 'IMPORT_HISTORY',
+      payload: data
+    });
+
+    if (response.success) {
+      console.log(`✓ 成功导入 ${response.data.imported} 条记录，跳过 ${response.data.skipped} 条重复记录`);
+      // 重新加载历史记录
+      emit('refresh');
+    } else {
+      console.error('✕ 导入失败:', response.error);
+    }
+  } catch (error) {
+    console.error('Import error:', error);
+    if (error instanceof SyntaxError) {
+      console.error('✕ 文件格式错误：不是有效的 JSON 文件');
+    }
+  } finally {
+    importing.value = false;
+  }
+}
+
 const stats = computed(() => {
   const completed = props.history.filter(h => h.status === 'completed').length;
   const failed = props.history.filter(h => h.status === 'failed').length;
@@ -55,6 +149,55 @@ const stats = computed(() => {
 
 <template>
   <div class="history-tab">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div class="toolbar-title">
+        <h2>翻译历史</h2>
+        <span class="count">{{ history.length }} 条记录</span>
+      </div>
+      <div class="toolbar-actions">
+        <button
+          class="btn-export"
+          @click="handleExport"
+          :disabled="exporting"
+        >
+          <svg v-if="!exporting" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+            <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+            <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"/>
+          </svg>
+          {{ exporting ? '导出中...' : '导出全部' }}
+        </button>
+        <button
+          class="btn-import"
+          @click="handleImport"
+          :disabled="importing"
+        >
+          <svg v-if="!importing" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+            <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+            <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="1"/>
+          </svg>
+          {{ importing ? '导入中...' : '导入数据' }}
+        </button>
+        <input
+          type="file"
+          ref="fileInput"
+          accept=".json"
+          @change="handleFileSelect"
+          hidden
+        >
+      </div>
+    </div>
+
     <!-- Stats -->
     <div v-if="stats.total > 0" class="stats-row">
       <div class="stat-card">
@@ -153,6 +296,111 @@ const stats = computed(() => {
 <style scoped>
 .history-tab {
   padding: 20px;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: white;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.toolbar-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.toolbar-title h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.toolbar-title .count {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-export, .btn-import {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-export {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-export:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-import {
+  background: white;
+  color: #667eea;
+  border: 1px solid #667eea;
+}
+
+.btn-import:hover:not(:disabled) {
+  background: #f5f3ff;
+}
+
+.btn-export:disabled, .btn-import:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@media (max-width: 480px) {
+  .toolbar {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .toolbar-title {
+    width: 100%;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+  }
+
+  .btn-export, .btn-import {
+    flex: 1;
+  }
 }
 
 /* History Tab */

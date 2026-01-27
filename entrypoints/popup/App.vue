@@ -220,6 +220,7 @@ function showMessage(type: 'success' | 'error', text: string) {
           :history="history"
           @delete="deleteTranslation"
           @retry="retryTranslation"
+          @refresh="loadHistory"
         />
       </Transition>
     </main>
