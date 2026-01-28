@@ -1,6 +1,7 @@
 import { indexedDB } from '@/utils/indexedDB';
 import type { TranslationEntry, MessageResponse, ExportData } from '@/types';
 import { validateExportData } from '@/utils/validation';
+import { activeTranslationsManager } from '../utils/activeTranslations';
 
 /**
  * 获取历史记录
@@ -15,7 +16,15 @@ export async function getHistory(): Promise<MessageResponse<TranslationEntry[]>>
  * 删除翻译记录
  */
 export async function deleteTranslation(id: string): Promise<MessageResponse<void>> {
+  // 先取消对应的翻译任务
+  activeTranslationsManager.cancel(id);
+
+  // 删除记录
   await indexedDB.deleteTranslation(id);
+
+  // 等待一小段时间确保取消完成
+  await new Promise(resolve => setTimeout(resolve, 100));
+
   return { success: true };
 }
 

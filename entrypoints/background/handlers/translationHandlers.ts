@@ -24,6 +24,7 @@ import { injectMarkers, extractTranslatedParagraphs } from '../utils/markerUtils
 import { applyFallbackStrategy } from '../utils/alignmentFallback';
 import type { TranslationBatchProgress } from '@/types';
 import { progressManager } from '../utils/progressManager';
+import { activeTranslationsManager } from '../utils/activeTranslations';
 
 /**
  * 检查并显示批次进度
@@ -178,18 +179,34 @@ export async function handleRequestTranslation(
   const cleanedContent = cleanEmptyParagraphs(payload.content);
   const { estimatedTokens } = extractMarkdownText(cleanedContent);
 
+  // 注册任务并获取 AbortController
+  const abortController = activeTranslationsManager.register(payload.id);
+
   await createPendingTranslation(payload.id, config, estimatedTokens);
 
   try {
     const translatedEntry = await performTranslation(
       { ...payload, content: cleanedContent },
       config,
-      sender.tab?.id
+      sender.tab?.id,
+      abortController.signal
     );
     return { success: true, data: translatedEntry };
   } catch (error) {
+    // 检查是否是取消错误
+    if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Translation cancelled')) {
+      console.log('[Background] 翻译已取消:', payload.id);
+      // 清理 pending 记录
+      await indexedDB.deleteTranslation(payload.id);
+      // 清理进度缓存
+      await progressManager.completeTranslation(payload.id, 0);
+      return { success: false, error: '翻译已取消' };
+    }
     await saveFailedTranslation(payload.id, config, error);
     return { success: false, error: error instanceof Error ? error.message : '翻译失败' };
+  } finally {
+    // 完成后清理
+    activeTranslationsManager.complete(payload.id);
   }
 }
 
@@ -202,6 +219,12 @@ export async function handleRetryTranslation(
   sender: MessageSender
 ): Promise<MessageResponse> {
   console.log('[Background] 重试翻译（断点续传）:', payload.id);
+
+  // 先取消旧任务（如果存在）
+  activeTranslationsManager.cancel(payload.id);
+
+  // 等待一小段时间确保取消完成
+  await new Promise(resolve => setTimeout(resolve, 100));
 
   const content = await indexedDB.getContent(payload.id);
   if (!content) {
@@ -232,19 +255,35 @@ export async function handleRetryTranslation(
   const cleanedContent = cleanEmptyParagraphs(content.originalContent);
   const { estimatedTokens } = extractMarkdownText(cleanedContent);
 
+  // 注册新任务
+  const abortController = activeTranslationsManager.register(payload.id);
+
   await createPendingTranslation(payload.id, config, estimatedTokens);
 
   try {
     const translatedEntry = await performTranslation(
       { id: payload.id, content: cleanedContent },
       config,
-      sender.tab?.id
+      sender.tab?.id,
+      abortController.signal
     );
     return { success: true, data: translatedEntry };
   } catch (error) {
+    // 检查是否是取消错误
+    if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Translation cancelled')) {
+      console.log('[Background] 翻译已取消:', payload.id);
+      // 清理 pending 记录
+      await indexedDB.deleteTranslation(payload.id);
+      // 清理进度缓存
+      await progressManager.completeTranslation(payload.id, 0);
+      return { success: false, error: '翻译已取消' };
+    }
     const batchProgress = existingTranslation?.meta?.batchProgress;
     await saveFailedTranslation(payload.id, config, error, batchProgress);
     return { success: false, error: error instanceof Error ? error.message : '翻译失败' };
+  } finally {
+    // 完成后清理
+    activeTranslationsManager.complete(payload.id);
   }
 }
 
@@ -255,7 +294,8 @@ export async function handleRetryTranslation(
 async function performTranslation(
   payload: { id: string; content: MetaSoApiResponse },
   config: ConfigEntry,
-  tabId: number | undefined
+  tabId: number | undefined,
+  signal?: AbortSignal
 ): Promise<TranslationEntry> {
   const data = payload.content.data;
   const originalMarkdownItems = data.markdown || [];
@@ -349,13 +389,19 @@ async function performTranslation(
         // 更新总体进度（累计token）
         const currentTotalTokens = totalTokens + tokenCount;
         progressManager.updateOverallProgress(payload.id, currentTotalTokens);
-      }
+      },
+      signal
     });
 
     rateLimiter.recordRequest();
 
-    // 翻译失败时保存进度
+    // 翻译失败时保存进度（但不包括取消的情况）
     if (!translationResult.success || !translationResult.content) {
+      // 如果是取消错误，直接抛出，不保存进度
+      if (translationResult.error === 'Translation cancelled') {
+        throw new Error('Translation cancelled');
+      }
+
       await saveProgressAndThrow(
         payload.id,
         config,

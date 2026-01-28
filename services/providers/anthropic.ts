@@ -18,6 +18,11 @@ export class AnthropicProvider implements TranslationProvider {
       return this.translateWithStream(content, config);
     }
 
+    // 检查是否已取消
+    if (config.signal?.aborted) {
+      throw new Error('Translation cancelled');
+    }
+
     const systemPrompt = config.systemPrompt || getDefaultSystemPrompt(config.targetLanguage);
 
     const requestBody = {
@@ -39,7 +44,8 @@ export class AnthropicProvider implements TranslationProvider {
         'x-api-key': config.apiKey,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: config.signal
     });
 
     if (!response.ok) {
@@ -60,6 +66,11 @@ export class AnthropicProvider implements TranslationProvider {
    * 使用流式传输进行翻译
    */
   async translateWithStream(content: string, config: TranslationConfig): Promise<string> {
+    // 检查是否已取消
+    if (config.signal?.aborted) {
+      throw new Error('Translation cancelled');
+    }
+
     const systemPrompt = config.systemPrompt || getDefaultSystemPrompt(config.targetLanguage);
 
     // 用于追踪 token 更新的变量
@@ -87,7 +98,8 @@ export class AnthropicProvider implements TranslationProvider {
         'x-api-key': config.apiKey,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: config.signal
     });
 
     if (!response.ok) {
@@ -104,52 +116,70 @@ export class AnthropicProvider implements TranslationProvider {
     const decoder = new TextDecoder();
     let result = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        // 检查是否已取消
+        if (config.signal?.aborted) {
+          reader.cancel();
+          throw new Error('Translation cancelled');
+        }
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const line of lines) {
-        // Anthropic 使用 event: 和 data: 格式
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (!data || data === '[DONE]') continue;
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
 
-          try {
-            const parsed = JSON.parse(data);
+        for (const line of lines) {
+          // Anthropic 使用 event: 和 data: 格式
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (!data || data === '[DONE]') continue;
 
-            // 检查是否是内容增量事件
-            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-              result += parsed.delta.text;
+            try {
+              const parsed = JSON.parse(data);
 
-              // 估算当前 token 数量并定期更新
-              const now = Date.now();
-              if (now - lastUpdateTime > UPDATE_INTERVAL) {
-                estimatedTokens = this.estimateTokens(result);
-                lastUpdateTime = now;
+              // 检查是否是内容增量事件
+              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                result += parsed.delta.text;
 
-                // 调用更新回调
-                if (config.onTokenUpdate) {
-                  config.onTokenUpdate(estimatedTokens);
+                // 估算当前 token 数量并定期更新
+                const now = Date.now();
+                if (now - lastUpdateTime > UPDATE_INTERVAL) {
+                  estimatedTokens = this.estimateTokens(result);
+                  lastUpdateTime = now;
+
+                  // 调用更新回调
+                  if (config.onTokenUpdate) {
+                    config.onTokenUpdate(estimatedTokens);
+                  }
                 }
               }
+            } catch (e) {
+              // 忽略解析错误
             }
-          } catch (e) {
-            // 忽略解析错误
           }
         }
       }
-    }
 
-    // 最终更新一次，确保返回准确的 token 数
-    estimatedTokens = this.estimateTokens(result);
-    if (config.onTokenUpdate) {
-      config.onTokenUpdate(estimatedTokens);
-    }
+      // 最终更新一次，确保返回准确的 token 数
+      estimatedTokens = this.estimateTokens(result);
+      if (config.onTokenUpdate) {
+        config.onTokenUpdate(estimatedTokens);
+      }
 
-    return result;
+      return result;
+    } catch (error) {
+      // 确保在出错时取消 reader
+      reader.cancel();
+
+      // 如果是 AbortError，直接抛出，不要添加额外处理
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+
+      throw error;
+    }
   }
 
   estimateTokens(text: string): number {

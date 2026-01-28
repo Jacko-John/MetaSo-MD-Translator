@@ -156,6 +156,11 @@ export class TranslationService {
         };
       }
 
+      // 检查是否已取消
+      if (config.signal?.aborted) {
+        throw new Error('Translation cancelled');
+      }
+
       // 调用提供商的翻译方法
       const translatedContent = await provider.translate(content, config);
 
@@ -174,6 +179,15 @@ export class TranslationService {
       };
     } catch (error) {
       console.error('[TranslationService] Translation failed:', error);
+
+      // 处理取消错误（检查 AbortError 或消息）
+      if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Translation cancelled')) {
+        return {
+          success: false,
+          error: 'Translation cancelled'
+        };
+      }
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'

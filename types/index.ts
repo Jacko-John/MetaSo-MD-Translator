@@ -332,6 +332,7 @@ export interface TranslationConfig {
   systemPrompt?: string;
   useStream?: boolean; // 是否使用流式传输
   onTokenUpdate?: (tokenCount: number) => void; // token 更新回调（用于更新 IndexedDB）
+  signal?: AbortSignal; // 用于取消请求
 }
 
 /**
