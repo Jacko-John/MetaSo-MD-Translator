@@ -23,6 +23,7 @@ import { notifyTranslationReady } from '../utils/notification';
 import { injectMarkers, extractTranslatedParagraphs } from '../utils/markerUtils';
 import { applyFallbackStrategy } from '../utils/alignmentFallback';
 import type { TranslationBatchProgress } from '@/types';
+import { progressManager } from '../utils/progressManager';
 
 /**
  * 检查并显示批次进度
@@ -56,7 +57,7 @@ async function saveProgressAndThrow(
     completedBatchCount: batchIndex,
     totalBatchCount: batches.length,
     translatedParagraphs: Object.fromEntries(translatedParagraphs),
-    totalTokens
+    totalTokens,
   };
   await saveBatchProgress(id, config, progress);
   throw new Error(`批次 ${batchIndex + 1} 翻译失败: ${error}，已保存进度，下次可从该批次继续`);
@@ -308,6 +309,17 @@ async function performTranslation(
     console.log('[Background] 已恢复', Object.keys(batchProgress.translatedParagraphs).length, '个段落的翻译');
   }
 
+  // 计算总体估算tokens
+  const estimatedTotalTokens = batches.flat().reduce(
+    (sum, p) => sum + (p.estimatedTokens || 0),
+    0
+  );
+
+  // 初始化总体进度（只调用一次）
+  if (resumeFromBatch === 0) {
+    progressManager.initOverallProgress(payload.id, estimatedTotalTokens);
+  }
+
   // 翻译批次（从断点继续）
   for (let batchIndex = resumeFromBatch; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
@@ -334,6 +346,9 @@ async function performTranslation(
       temperature: CONFIG.TRANSLATION.TEMPERATURE,
       onTokenUpdate: (tokenCount) => {
         currentBatchTokens = tokenCount;
+        // 更新总体进度（累计token）
+        const currentTotalTokens = totalTokens + tokenCount;
+        progressManager.updateOverallProgress(payload.id, currentTotalTokens);
       }
     });
 
@@ -376,9 +391,8 @@ async function performTranslation(
       completedBatchCount: batchIndex + 1,
       totalBatchCount: batches.length,
       translatedParagraphs: Object.fromEntries(translatedParagraphs),
-      totalTokens
+      totalTokens,
     };
-    await saveBatchProgress(payload.id, config, progress);
     await updatePendingTranslation(payload.id, config, totalTokens);
 
     console.log(`[Background]   批次 ${batchIndex + 1} 完成`);
@@ -389,6 +403,9 @@ async function performTranslation(
   const duration = Date.now() - startTime;
 
   console.log('[Background] 翻译完成! 耗时:', duration, 'ms | Tokens:', totalTokens);
+
+  // 完成总体进度
+  await progressManager.completeTranslation(payload.id, totalTokens);
 
   const translationEntry: TranslationEntry = {
     id: payload.id,

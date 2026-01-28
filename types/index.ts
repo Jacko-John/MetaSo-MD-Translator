@@ -130,6 +130,7 @@ export type MessageType =
   | 'CLEAR_ALL' // 清空所有数据
   | 'EXPORT_HISTORY' // 导出历史记录
   | 'IMPORT_HISTORY' // 导入历史记录
+  | 'GET_REALTIME_PROGRESS' // 获取实时翻译进度
   | 'ERROR' // 错误消息
   ;
 
@@ -256,6 +257,14 @@ export interface ImportHistoryMessage extends BaseMessage {
   payload: ExportData;
 }
 
+// 获取实时翻译进度
+export interface GetRealtimeProgressMessage extends BaseMessage {
+  type: 'GET_REALTIME_PROGRESS';
+  payload: {
+    id: string; // 翻译ID
+  };
+}
+
 // 错误消息
 export interface ErrorMessage extends BaseMessage {
   type: 'ERROR';
@@ -283,6 +292,7 @@ export type Message =
   | ClearAllMessage
   | ExportHistoryMessage
   | ImportHistoryMessage
+  | GetRealtimeProgressMessage
   | ErrorMessage
   ;
 
@@ -291,6 +301,17 @@ export interface MessageResponse<T = any> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+// 实时翻译进度数据
+export interface RealtimeProgressData {
+  translationId: string;
+  status: 'pending' | 'completed' | 'failed';
+  totalTokens: number; // 目前总token
+  estimatedTotalTokens: number; // 预计总token
+  tokensPerSecond: number; // 翻译速度
+  estimatedRemainingTime: number; // 预计剩余时间(ms)
+  percentage: number; // 进度百分比 0-100
 }
 
 // ============================================================================

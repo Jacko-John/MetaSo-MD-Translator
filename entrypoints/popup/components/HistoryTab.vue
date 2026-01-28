@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { TranslationEntry } from '@/types';
+import ProgressCard from './ProgressCard.vue';
 
 interface Props {
   history: TranslationEntry[];
@@ -9,6 +10,7 @@ interface Emits {
   (e: 'delete', id: string): void;
   (e: 'retry', id: string): void;
   (e: 'refresh'): void;
+  (e: 'progressComplete'): void;
 }
 
 const props = defineProps<Props>();
@@ -23,6 +25,11 @@ const providerOptions = [
   { value: 'anthropic', label: 'Anthropic', icon: '🧠', color: '#d97757' },
   { value: 'custom', label: '自定义', icon: '⚙️', color: '#6b7280' }
 ];
+
+const handleRetry = (id: string) => emit('retry', id);
+const handleDelete = (id: string) => emit('delete', id);
+const handleRefresh = () => emit('refresh');
+const handleProgressComplete = () => emit('progressComplete');
 
 function getProviderInfo(provider: string | undefined) {
   return providerOptions.find(p => p.value === provider) || providerOptions[0];
@@ -45,9 +52,6 @@ function formatDate(timestamp: number): string {
   }
 }
 
-function handleRetry(id: string) {
-  emit('retry', id);
-}
 
 // 下载 JSON 文件
 function downloadJsonFile(data: any, filename: string) {
@@ -124,7 +128,7 @@ async function handleFileSelect(event: Event) {
     if (response.success) {
       console.log(`✓ 成功导入 ${response.data.imported} 条记录，跳过 ${response.data.skipped} 条重复记录`);
       // 重新加载历史记录
-      emit('refresh');
+      handleRefresh();
     } else {
       console.error('✕ 导入失败:', response.error);
     }
@@ -265,6 +269,14 @@ const stats = computed(() => {
               {{ (item.meta.duration / 1000).toFixed(1) }}s
             </span>
           </div>
+
+          <!-- 实时进度卡片（仅pending时显示） -->
+          <ProgressCard
+            v-if="item.status === 'pending'"
+            :translation-id="item.id"
+            @complete="handleProgressComplete()"
+          />
+
           <div v-if="item.status === 'failed' && item.error" class="error-message">
             {{ item.error }}
           </div>
@@ -281,7 +293,7 @@ const stats = computed(() => {
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
           </button>
-          <button class="btn-icon btn-delete" @click="emit('delete', item.id)" title="删除">
+          <button class="btn-icon btn-delete" @click="handleDelete(item.id)" title="删除">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 6L6 18"/>
               <path d="M6 6l12 12"/>

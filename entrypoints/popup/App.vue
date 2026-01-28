@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import type { ConfigEntry, TranslationEntry } from '@/types';
 import Header from './components/Header.vue';
 import Tabs from './components/Tabs.vue';
@@ -13,59 +13,17 @@ const history = ref<TranslationEntry[]>([]);
 const saving = ref(false);
 const message = ref<{ type: 'success' | 'error', text: string } | null>(null);
 
-// 自动刷新定时器
-let refreshTimer: number | null = null;
-
 const stats = computed(() => ({
   completed: history.value.filter(h => h.status === 'completed').length,
   totalTokens: history.value.reduce((sum, h) => sum + (h.meta?.tokenCount || 0), 0),
   total: history.value.length
 }));
 
-// 检查是否有正在进行的翻译
-const hasPendingTranslations = computed(() => {
-  return history.value.some(h => h.status === 'pending');
-});
-
 onMounted(() => {
   console.log('[App] Mounted, loading config and history...');
   loadConfig();
   loadHistory();
-  startAutoRefresh();
 });
-
-onUnmounted(() => {
-  stopAutoRefresh();
-});
-
-// 监听是否有 pending 翻译，自动启停刷新
-watch(hasPendingTranslations, (hasPending) => {
-  if (hasPending) {
-    startAutoRefresh();
-  } else {
-    stopAutoRefresh();
-  }
-});
-
-// 启动自动刷新
-function startAutoRefresh() {
-  if (refreshTimer) return;
-
-  // 每3秒刷新一次历史记录
-  refreshTimer = window.setInterval(() => {
-    if (activeTab.value === 'history') {
-      loadHistory();
-    }
-  }, 3000);
-}
-
-// 停止自动刷新
-function stopAutoRefresh() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-}
 
 async function loadConfig() {
   try {
@@ -221,6 +179,7 @@ function showMessage(type: 'success' | 'error', text: string) {
           @delete="deleteTranslation"
           @retry="retryTranslation"
           @refresh="loadHistory"
+          @progressComplete="loadHistory"
         />
       </Transition>
     </main>

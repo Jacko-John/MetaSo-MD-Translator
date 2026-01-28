@@ -3,6 +3,7 @@ import type { MessageSender } from '../types';
 import { handleOriginalRequest, checkTranslation, getTranslation, handleRequestTranslation, handleRetryTranslation } from './translationHandlers';
 import { getConfig, updateConfig } from './configHandlers';
 import { getHistory, deleteTranslation, clearAll, exportHistory, importHistory } from './historyHandlers';
+import { handleGetRealtimeProgress } from './progressHandlers';
 
 /**
  * 处理所有消息
@@ -45,6 +46,9 @@ export async function handleMessage(message: Message, sender: MessageSender): Pr
 
       case 'IMPORT_HISTORY':
         return await importHistory(message.payload);
+
+      case 'GET_REALTIME_PROGRESS':
+        return await handleGetRealtimeProgress(message.payload);
 
       default:
         return { success: false, error: 'Unknown message type' };
