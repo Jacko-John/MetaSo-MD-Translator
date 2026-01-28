@@ -8,7 +8,8 @@ import { getSelectedModel, getProviderForModel, getModelIdForTranslation } from 
 export async function createPendingTranslation(
   id: string,
   config: ConfigEntry,
-  estimatedTokens: number
+  estimatedTokens: number,
+  batchProgress?: TranslationBatchProgress
 ): Promise<void> {
   const selectedModel = getSelectedModel(config);
   const provider = selectedModel ? getProviderForModel(config, selectedModel) : null;
@@ -28,9 +29,10 @@ export async function createPendingTranslation(
       translatedAt: Date.now(),
       model: selectedModel?.id || getModelIdForTranslation(config),
       provider: provider?.type || 'openai',
-      tokenCount: 0,
+      tokenCount: batchProgress?.totalTokens || 0,
       estimatedTokenCount: estimatedTokens,
-      duration: 0
+      duration: 0,
+      batchProgress
     },
     status: 'pending'
   });
@@ -42,7 +44,8 @@ export async function createPendingTranslation(
 export async function updatePendingTranslation(
   id: string,
   config: ConfigEntry,
-  tokenCount: number
+  tokenCount: number,
+  batchProgress?: TranslationBatchProgress
 ): Promise<void> {
   const selectedModel = getSelectedModel(config);
   const provider = selectedModel ? getProviderForModel(config, selectedModel) : null;
@@ -63,7 +66,8 @@ export async function updatePendingTranslation(
       model: selectedModel?.id || getModelIdForTranslation(config),
       provider: provider?.type || 'openai',
       tokenCount: tokenCount,
-      duration: 0
+      duration: 0,
+      batchProgress
     },
     status: 'pending'
   }).catch(console.error);

@@ -103,8 +103,8 @@ async function retryTranslation(id: string) {
       // 立即刷新显示 pending 状态
       await loadHistory();
       // 3秒后再刷新一次以显示最新状态
-      setTimeout(() => {
-        loadHistory();
+      setTimeout(async () => {
+        await loadHistory();
       }, 3000);
     } else {
       showMessage('error', '✕ 重试失败: ' + response.error);

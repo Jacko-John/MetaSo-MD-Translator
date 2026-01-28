@@ -273,6 +273,7 @@ const stats = computed(() => {
           <!-- 实时进度卡片（仅pending时显示） -->
           <ProgressCard
             v-if="item.status === 'pending'"
+            :key="`${item.id}-${item.status}`"
             :translation-id="item.id"
             @complete="handleProgressComplete()"
           />

@@ -36,23 +36,40 @@ class TranslationProgressManager {
 
   /**
    * 初始化总体进度（翻译开始时调用一次）
+   * 如果已经存在进度，只更新 estimatedTotalTokens，保留其他字段
    */
   initOverallProgress(
     translationId: string,
-    estimatedTotalTokens: number
+    estimatedTotalTokens: number,
+    resumeTokens?: number
   ): void {
+    const existing = this.progressCache.get(translationId);
+
+    if (existing) {
+      // 进度已存在，只更新 estimatedTotalTokens
+      existing.estimatedTotalTokens = estimatedTotalTokens;
+      console.log(`[ProgressManager] 更新总体进度估算: ${translationId}, 估算 ${estimatedTotalTokens} tokens, 已完成 ${existing.totalTokens} tokens`);
+      return;
+    }
+
+    // 创建新进度
+    const now = Date.now();
     const progress: RealtimeTokenProgress = {
       translationId,
-      totalTokens: 0,
+      totalTokens: resumeTokens || 0,
       estimatedTotalTokens,
-      startTime: Date.now(),
-      lastUpdateTime: Date.now(),
+      startTime: now,
+      lastUpdateTime: now,
       tokensPerSecond: 0,
       estimatedRemainingTime: 0
     };
 
     this.progressCache.set(translationId, progress);
-    console.log(`[ProgressManager] 初始化总体进度: ${translationId}, 估算 ${estimatedTotalTokens} tokens`);
+    if (resumeTokens && resumeTokens > 0) {
+      console.log(`[ProgressManager] 恢复总体进度: ${translationId}, 已完成 ${resumeTokens}/${estimatedTotalTokens} tokens`);
+    } else {
+      console.log(`[ProgressManager] 初始化总体进度: ${translationId}, 估算 ${estimatedTotalTokens} tokens`);
+    }
   }
 
   /**

@@ -202,7 +202,10 @@ export async function handleRequestTranslation(
       await progressManager.completeTranslation(payload.id, 0);
       return { success: false, error: '翻译已取消' };
     }
-    await saveFailedTranslation(payload.id, config, error);
+    // 获取已保存的批次进度
+    const existingTranslation = await indexedDB.getTranslation(payload.id);
+    const batchProgress = existingTranslation?.meta?.batchProgress;
+    await saveFailedTranslation(payload.id, config, error, batchProgress);
     return { success: false, error: error instanceof Error ? error.message : '翻译失败' };
   } finally {
     // 完成后清理
@@ -258,17 +261,25 @@ export async function handleRetryTranslation(
   // 注册新任务
   const abortController = activeTranslationsManager.register(payload.id);
 
-  await createPendingTranslation(payload.id, config, estimatedTokens);
+  await createPendingTranslation(
+    payload.id,
+    config,
+    estimatedTokens,
+    existingTranslation?.meta?.batchProgress
+  );
 
-  try {
-    const translatedEntry = await performTranslation(
-      { id: payload.id, content: cleanedContent },
-      config,
-      sender.tab?.id,
-      abortController.signal
-    );
-    return { success: true, data: translatedEntry };
-  } catch (error) {
+  // 提前初始化进度管理器，让前端能立即获取到进度
+  const batchProgress = existingTranslation?.meta?.batchProgress;
+  const resumeTokens = batchProgress?.totalTokens || 0;
+  progressManager.initOverallProgress(payload.id, estimatedTokens, resumeTokens);
+
+  // 立即返回响应，让翻译在后台进行
+  performTranslation(
+    { id: payload.id, content: cleanedContent },
+    config,
+    sender.tab?.id,
+    abortController.signal
+  ).catch(async (error) => {
     // 检查是否是取消错误
     if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Translation cancelled')) {
       console.log('[Background] 翻译已取消:', payload.id);
@@ -276,15 +287,18 @@ export async function handleRetryTranslation(
       await indexedDB.deleteTranslation(payload.id);
       // 清理进度缓存
       await progressManager.completeTranslation(payload.id, 0);
-      return { success: false, error: '翻译已取消' };
+      return;
     }
-    const batchProgress = existingTranslation?.meta?.batchProgress;
+    // 获取最新的批次进度（performTranslation 中可能已更新）
+    const latestTranslation = await indexedDB.getTranslation(payload.id);
+    const batchProgress = latestTranslation?.meta?.batchProgress;
     await saveFailedTranslation(payload.id, config, error, batchProgress);
-    return { success: false, error: error instanceof Error ? error.message : '翻译失败' };
-  } finally {
+  }).finally(() => {
     // 完成后清理
     activeTranslationsManager.complete(payload.id);
-  }
+  });
+
+  return { success: true, data: { message: '开始重试翻译' } };
 }
 
 /**
@@ -355,10 +369,8 @@ async function performTranslation(
     0
   );
 
-  // 初始化总体进度（只调用一次）
-  if (resumeFromBatch === 0) {
-    progressManager.initOverallProgress(payload.id, estimatedTotalTokens);
-  }
+  // 初始化总体进度（断点续传时恢复已有进度）
+  progressManager.initOverallProgress(payload.id, estimatedTotalTokens, totalTokens);
 
   // 翻译批次（从断点继续）
   for (let batchIndex = resumeFromBatch; batchIndex < batches.length; batchIndex++) {
@@ -439,7 +451,7 @@ async function performTranslation(
       translatedParagraphs: Object.fromEntries(translatedParagraphs),
       totalTokens,
     };
-    await updatePendingTranslation(payload.id, config, totalTokens);
+    await updatePendingTranslation(payload.id, config, totalTokens, progress);
 
     console.log(`[Background]   批次 ${batchIndex + 1} 完成`);
   }
