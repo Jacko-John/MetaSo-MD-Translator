@@ -8,10 +8,6 @@ import type { MetaSoApiResponse } from '@/types';
 // ============================================================================
 const CONFIG = {
   UI: {
-    TOAST_DURATION: {
-      ERROR: 5000,
-      LOADING: 3000,
-    },
     MODAL: {
       PREVIEW_MAX_LENGTH: 300,
       Z_INDEX: 999999,
@@ -30,8 +26,6 @@ export interface ConsentModalData {
   content: MetaSoApiResponse;
   estimatedTokens?: number;
 }
-
-export type ToastType = 'error' | 'loading';
 
 let consentModalContainer: HTMLElement | null = null;
 
@@ -82,40 +76,6 @@ function escapeHtml(text: string): string {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
-}
-
-// ============================================================================
-// Toast 通知
-// ============================================================================
-export function showToast(message: string, type: ToastType): void {
-  const toast = createToastElement(message, type);
-  document.body.appendChild(toast);
-
-  const duration = type === 'error' ? CONFIG.UI.TOAST_DURATION.ERROR : CONFIG.UI.TOAST_DURATION.LOADING;
-  setTimeout(() => {
-    toast.remove();
-  }, duration);
-}
-
-function createToastElement(message: string, type: ToastType): HTMLElement {
-  const toast = document.createElement('div');
-  const backgroundColor = type === 'error' ? '#f44336' : '#2196F3';
-
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: ${backgroundColor};
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: ${CONFIG.UI.MODAL.Z_INDEX};
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-  `;
-  toast.textContent = message;
-  return toast;
 }
 
 // ============================================================================

@@ -6,7 +6,7 @@ import type { ParsedMetaSoUrl } from '@/types';
  * MetaSo API URL 正则表达式
  * 匹配: https://metaso.cn/api/file/{fileId}/pdf-markdown/{pageId}[?lang=xx]
  */
-const METASO_URL_PATTERN = /^https:\/\/metaso\.cn\/api\/file\/(\d+)\/pdf-markdown\/([\d-]+)(\?.*)?$/;
+const METASO_URL_PATTERN = /^https:\/\/metaso\.cn\/api\/file\/(\d+)\/pdf-markdown\/([\d]-[\d]+)(\?.*)?$/;
 
 /**
  * 解析 MetaSo API URL

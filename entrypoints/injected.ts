@@ -3,6 +3,7 @@
 
 import { parseMetaSoUrl, generateContentId } from '@/utils/urlParser';
 import type { MetaSoApiResponse, TranslationEntry } from '@/types';
+import { showCacheLoadedNotification } from './ui/notificationManager';
 
 // ============================================================================
 // 常量定义
@@ -27,7 +28,7 @@ interface PostedMessage {
 }
 
 interface PostedMessagePayload {
-  id: string;
+  id?: string;
   url?: string;
   fileId?: string;
   pageId?: string;
@@ -284,8 +285,11 @@ export default defineUnlistedScript(() => {
       }
 
       const cached = getCachedTranslation(id);
+      console.log('[MetaSo Translator] XHR 缓存检查:', { id, hasCached: !!cached });
       if (cached) {
         console.log('[MetaSo Translator] XHR 返回缓存翻译:', id);
+        // 场景 C: 显示缓存加载通知
+        showCacheLoadedNotification();
         setTimeout(() => setXHRResponse(xhr, cached), 0);
         (OriginalXHR.prototype.send as XHRSendMethod).call(this, body);
         return;

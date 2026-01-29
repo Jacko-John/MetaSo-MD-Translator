@@ -2,7 +2,13 @@
 // 内容脚本：作为 injected script 和 background 之间的桥梁
 
 import type { Message, MessageResponse, MetaSoApiResponse } from '@/types';
-import { renderConsentModal, showToast, removeConsentModal } from './ui/consentModal';
+import { renderConsentModal, removeConsentModal } from './ui/consentModal';
+import {
+  showTranslatingNotification,
+  showCacheDetectedNotification,
+  showTranslationSuccessNotification,
+  showErrorNotification
+} from './ui/notificationManager';
 
 // ============================================================================
 // 常量配置
@@ -56,6 +62,16 @@ export default defineContentScript({
   main() {
     console.log('[MetaSo Translator] Content script 已加载');
 
+    // 捕获所有未处理的 Promise rejection
+    window.addEventListener('unhandledrejection', (event) => {
+      if (event.reason instanceof Error && event.reason.message.includes('Extension context invalidated')) {
+        console.warn('[MetaSo Translator] Extension context invalidated (caught by unhandledrejection)');
+        event.preventDefault();
+      } else {
+        console.error('[MetaSo Translator] Unhandled promise rejection:', event.reason);
+      }
+    });
+
     injectScript('/injected.js', {
       keepInDom: true,
     });
@@ -81,7 +97,13 @@ export default defineContentScript({
           }
         };
 
-        browser.runtime.sendMessage(message, handleResponse);
+        try {
+          browser.runtime.sendMessage(message, handleResponse);
+        } catch (error) {
+          // 扩展上下文失效时，sendMessage 会抛出错误
+          console.warn('[MetaSo Translator] Extension context invalidated:', error);
+          resolve({ success: false, error: 'Extension context invalidated' });
+        }
       });
     }
 
@@ -93,33 +115,57 @@ export default defineContentScript({
 
       const message = event.data as PostedMessage;
 
-      switch (message.type) {
-        case CONFIG.MESSAGE_TYPES.INJECTED_SCRIPT_READY:
-          console.log('[MetaSo Translator] Injected script 已就绪');
-          break;
+      try {
+        switch (message.type) {
+          case CONFIG.MESSAGE_TYPES.INJECTED_SCRIPT_READY:
+            console.log('[MetaSo Translator] Injected script 已就绪');
+            break;
 
-        case CONFIG.MESSAGE_TYPES.ORIGINAL_REQUEST:
-          await handleOriginalRequest(message.payload as OriginalRequestPayload);
-          break;
+          case CONFIG.MESSAGE_TYPES.ORIGINAL_REQUEST:
+            await handleOriginalRequest(message.payload as OriginalRequestPayload);
+            break;
 
-        case CONFIG.MESSAGE_TYPES.GET_TRANSLATION:
-          await handleGetTranslation(message.payload as GetTranslationPayload);
-          break;
+          case CONFIG.MESSAGE_TYPES.GET_TRANSLATION:
+            await handleGetTranslation(message.payload as GetTranslationPayload);
+            break;
+        }
+      } catch (error) {
+        // 扩展上下文失效时静默处理
+        if (error instanceof Error && error.message.includes('Extension context invalidated')) {
+          console.warn('[MetaSo Translator] 扩展上下文失效，请刷新页面');
+        } else {
+          console.error('[MetaSo Translator] Message handling error:', error);
+        }
       }
     });
 
     // ========================================================================
     // 监听 background 消息
     // ========================================================================
-    browser.runtime.onMessage.addListener((message: Message, _sender: unknown, sendResponse: (response: MessageResponse) => void) => {
-      handleMessage(message)
-        .then(sendResponse)
-        .catch((error) => {
-          console.error('[MetaSo Translator] Message handling error:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-      return true;
-    });
+    try {
+      browser.runtime.onMessage.addListener((message: Message, _sender: unknown, sendResponse: (response: MessageResponse) => void) => {
+        handleMessage(message)
+          .then((response) => {
+            try {
+              sendResponse(response);
+            } catch (e) {
+              // 扩展上下文失效时静默处理
+              console.warn('[MetaSo Translator] Failed to send response:', e);
+            }
+          })
+          .catch((error) => {
+            console.error('[MetaSo Translator] Message handling error:', error);
+            try {
+              sendResponse({ success: false, error: error.message });
+            } catch {
+              // sendResponse 也失败时，忽略错误
+            }
+          });
+        return true;
+      });
+    } catch (error) {
+      console.warn('[MetaSo Translator] Failed to add message listener:', error);
+    }
 
     // ========================================================================
     // 消息处理函数
@@ -127,8 +173,30 @@ export default defineContentScript({
 
     async function handleOriginalRequest(payload: OriginalRequestPayload): Promise<void> {
       console.log('[MetaSo Translator] 处理原始请求:', payload.id);
-      console.log('[MetaSo Translator] 原始请求内容:', payload.content);
 
+      // 首先检查是否已有翻译缓存（场景 B）
+      const translationResponse = await sendMessageToBackground({
+        type: 'GET_TRANSLATION',
+        payload: { id: payload.id }
+      });
+
+      if (translationResponse.success && translationResponse.data) {
+        console.log('[MetaSo Translator] 场景 B: 发现已存在翻译缓存，显示通知');
+        // 场景 B: 显示缓存检测通知，并直接使用缓存
+        showCacheDetectedNotification();
+
+        // 通知 injected script 返回缓存翻译
+        window.postMessage({
+          type: 'TRANSLATION_READY',
+          payload: {
+            id: payload.id,
+            translation: translationResponse.data
+          }
+        }, '*');
+        return;
+      }
+
+      // 没有缓存，存储原始内容并检查是否需要翻译
       const response = await sendMessageToBackground({
         type: 'ORIGINAL_REQUEST',
         payload
@@ -176,6 +244,7 @@ export default defineContentScript({
     async function handleMessage(message: Message): Promise<MessageResponse> {
       switch (message.type) {
         case 'TRANSLATION_READY':
+          showTranslationSuccessNotification();
           window.postMessage(message, '*');
           return { success: true };
 
@@ -211,6 +280,9 @@ export default defineContentScript({
         console.log('[MetaSo Translator] 用户同意翻译');
         requestTranslation(data);
         removeConsentModal();
+
+        // 场景 A: 显示"正在翻译"通知
+        showTranslatingNotification();
       });
     }
 
@@ -222,10 +294,7 @@ export default defineContentScript({
 
       if (!response.success) {
         console.error('[MetaSo Translator] 请求翻译失败:', response.error);
-        showToast('翻译失败: ' + response.error, 'error');
-      } else {
-        console.log('[MetaSo Translator] 翻译请求已提交');
-        showToast('正在翻译中...', 'loading');
+        showErrorNotification('翻译失败: ' + response.error);
       }
     }
 
